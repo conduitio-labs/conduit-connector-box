@@ -1,6 +1,6 @@
 //go:generate conn-sdk-cli specgen
 
-package connectorname
+package box
 
 import (
 	_ "embed"

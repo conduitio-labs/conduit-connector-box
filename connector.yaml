@@ -1,13 +1,9 @@
 version: "1.0"
 specification:
-  name: connectorname
-  summary: A brief description of your connector.
+  name: box
+  summary: Conduit connector for the box content management system.
   description: |-
-    This is a detailed description of your connector.
-
-    It can contain information about the features and limitations of the connector, usage instructions, etc.
-
-    By default, it's inserted into the README file and Markdown syntax can be used.
+    Conduit connector for the box content management system.
   version: v0.0.1
   author: Your Name
   source:

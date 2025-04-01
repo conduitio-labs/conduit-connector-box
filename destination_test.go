@@ -1,16 +1,16 @@
-package connectorname_test
+package box_test
 
 import (
 	"context"
 	"testing"
 
-	connectorname "github.com/conduitio/conduit-connector-connectorname"
+	box "github.com/conduitio-labs/conduit-connector-box"
 	"github.com/matryer/is"
 )
 
 func TestTeardown_NoOpen(t *testing.T) {
 	is := is.New(t)
-	con := connectorname.NewDestination()
+	con := box.NewDestination()
 	err := con.Teardown(context.Background())
 	is.NoErr(err)
 }
