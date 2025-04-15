@@ -2,8 +2,7 @@ version: "1.0"
 specification:
   name: box
   summary: Conduit connector for the box content management system.
-  description: |-
-    Conduit connector for the box content management system.
+  description: Conduit connector for the box content management system.
   version: v0.0.1
   author: Your Name
   source:

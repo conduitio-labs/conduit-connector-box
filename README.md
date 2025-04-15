@@ -3,11 +3,7 @@
 [Conduit](https://conduit.io) connector for <!-- readmegen:name -->Box<!-- /readmegen:name -->.
 
 <!-- readmegen:description -->
-This is a detailed description of your connector.
-
-It can contain information about the features and limitations of the connector, usage instructions, etc.
-
-By default, it's inserted into the README file and Markdown syntax can be used.<!-- /readmegen:description -->
+Conduit connector for the box content management system.<!-- /readmegen:description -->
 
 ## Source
 
