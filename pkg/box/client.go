@@ -77,7 +77,7 @@ func (c *HTTPClient) Upload(ctx context.Context, filename, parentID string, cont
 	}
 
 	headers := map[string]string{"Content-Type": writer.FormDataContentType()}
-	resp, err := c.makeRequest(ctx, http.MethodPost, UploadBaseURL+"/api/2.0/files/content", headers, bytes.NewReader(content), false)
+	resp, err := c.makeRequest(ctx, http.MethodPost, UploadBaseURL+"/api/2.0/files/content", headers, &requestBody, false)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +211,7 @@ func parseError(resp *http.Response) error {
 		for _, e := range errResp.ContextInfo.Errors {
 			errors += fmt.Sprintf("[%s %s %s]", e.Reason, e.Name, e.Message)
 		}
-		return fmt.Errorf("%w: [status:%d] [code:%s] %s ", ErrBoxAPI, errResp.Status, errResp.Code, errors)
+		return fmt.Errorf("%w: [status:%d] [code:%s] [%s] %s ", ErrBoxAPI, errResp.Status, errResp.Code, errResp.Message, errors)
 	}
 
 	return fmt.Errorf("%w (status %d): %s", ErrBoxAPI, resp.StatusCode, string(body))

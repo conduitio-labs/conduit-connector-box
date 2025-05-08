@@ -7,8 +7,15 @@ specification:
   author: Your Name
   source:
     parameters:
-      - name: sourceConfigParam
-        description: SourceConfigParam must be provided by the user.
+      - name: parentID
+        description: ""
+        type: string
+        default: ""
+        validations:
+          - type: required
+            value: ""
+      - name: token
+        description: ""
         type: string
         default: ""
         validations:
@@ -76,13 +83,20 @@ specification:
             value: avro
   destination:
     parameters:
-      - name: destinationConfigParam
-        description: DestinationConfigParam must be either yes or no (defaults to yes).
+      - name: parentID
+        description: ""
         type: string
-        default: "yes"
+        default: ""
         validations:
-          - type: inclusion
-            value: yes,no
+          - type: required
+            value: ""
+      - name: token
+        description: ""
+        type: string
+        default: ""
+        validations:
+          - type: required
+            value: ""
       - name: sdk.batch.delay
         description: Maximum delay before an incomplete batch is written to the destination.
         type: duration

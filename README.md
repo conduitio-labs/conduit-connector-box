@@ -22,10 +22,14 @@ pipelines:
       - id: example
         plugin: "box"
         settings:
-          # SourceConfigParam must be provided by the user.
+          # 
           # Type: string
           # Required: yes
-          sourceConfigParam: ""
+          parentID: ""
+          # 
+          # Type: string
+          # Required: yes
+          token: ""
           # Maximum delay before an incomplete batch is read from the source.
           # Type: duration
           # Required: no
@@ -90,10 +94,14 @@ pipelines:
       - id: example
         plugin: "box"
         settings:
-          # DestinationConfigParam must be either yes or no (defaults to yes).
+          # 
           # Type: string
-          # Required: no
-          destinationConfigParam: "yes"
+          # Required: yes
+          parentID: ""
+          # 
+          # Type: string
+          # Required: yes
+          token: ""
           # Maximum delay before an incomplete batch is written to the
           # destination.
           # Type: duration

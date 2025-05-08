@@ -15,6 +15,6 @@
 package config
 
 type Config struct {
-	Token    string `json:"token`
-	ParentID string `json:"parentID`
+	Token    string `json:"token" validate:"required"`
+	ParentID string `json:"parentID"  validate:"required"`
 }

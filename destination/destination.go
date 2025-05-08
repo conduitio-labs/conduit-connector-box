@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/conduitio-labs/conduit-connector-box/config"
 	"github.com/conduitio-labs/conduit-connector-box/pkg/box"
 	"github.com/conduitio/conduit-commons/opencdc"
 	sdk "github.com/conduitio/conduit-connector-sdk"
@@ -52,7 +53,7 @@ type session struct {
 type DestinationConfig struct {
 	sdk.DefaultDestinationMiddleware
 	// Config includes parameters that are the same in the source and destination.
-	Config
+	config.Config
 }
 
 func NewDestination() sdk.Destination {
@@ -106,14 +107,16 @@ func (d *Destination) uploadFile(ctx context.Context, r opencdc.Record) error {
 	if !ok {
 		return NewInvalidFileError("missing filename")
 	}
-	size, ok := r.Metadata["size"]
+	size, ok := r.Metadata["file_size"]
 	if !ok {
-		return NewInvalidFileError("missing filesize")
+		return NewInvalidFileError("missing file_size")
 	}
 	filesize, err := strconv.ParseInt(size, 10, 64)
 	if err != nil {
-		return NewInvalidFileError("invalid filesize" + err.Error())
+		return NewInvalidFileError("invalid file_size" + err.Error())
 	}
+
+	fmt.Println("payload......:", string(r.Payload.After.Bytes()))
 
 	response, err := d.client.Upload(ctx, filename, d.config.ParentID, r.Payload.After.Bytes())
 	if err != nil {
@@ -178,13 +181,56 @@ func (d *Destination) handleFileChunk(ctx context.Context, r opencdc.Record) err
 			return nil
 		}
 
-		return d.uploadLargeParts(ctx, metaData, r.Payload.After.Bytes())
+		return d.uploadLargeParts(ctx, sess, metaData, r.Payload.After.Bytes())
 	}
 
 	return nil
 }
 
-func (d *Destination) uploadLargeParts(ctx context.Context, metaData metadata, content []byte) error {
+func (d *Destination) uploadLargeParts(ctx context.Context, sess session, metaData metadata, content []byte) error {
+	if metaData.index == 1 {
+		d.files[metaData.hash] = content
+		return nil
+	}
+
+	switch {
+	case len(content)+len(d.files[metaData.hash]) == int(sess.partSize):
+		d.files[metaData.hash] = append(d.files[metaData.hash], content...)
+
+		shaSum := sha1.Sum(content)
+		shaB64 := base64.StdEncoding.EncodeToString(shaSum[:])
+		start := metaData.index * sess.partSize
+		end := start + sess.partSize - 1
+		contentRange := fmt.Sprintf("bytes %d-%d/%d", start, end, metaData.filesize)
+
+		_, err := d.client.UploadChunk(ctx, d.files[metaData.hash], sess.sessionID, shaB64, contentRange)
+		if err != nil {
+			return err
+		}
+
+		d.files[metaData.hash] = []byte{}
+
+	case len(content)+len(d.files[metaData.hash]) > int(sess.partSize):
+		minus := int(sess.partSize) - len(content)
+		d.files[metaData.hash] = append(d.files[metaData.hash], content[:minus]...)
+
+		shaSum := sha1.Sum(content)
+		shaB64 := base64.StdEncoding.EncodeToString(shaSum[:])
+		start := metaData.index * sess.partSize
+		end := start + sess.partSize - 1
+		contentRange := fmt.Sprintf("bytes %d-%d/%d", start, end, metaData.filesize)
+
+		_, err := d.client.UploadChunk(ctx, d.files[metaData.hash], sess.sessionID, shaB64, contentRange)
+		if err != nil {
+			return err
+		}
+
+		d.files[metaData.hash] = []byte{}
+		d.files[metaData.hash] = append(d.files[metaData.hash], content[minus:]...)
+
+	case len(content)+len(d.files[metaData.hash]) < int(sess.partSize):
+		d.files[metaData.hash] = append(d.files[metaData.hash], content...)
+	}
 
 	return nil
 }

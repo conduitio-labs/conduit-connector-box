@@ -33,8 +33,6 @@ type SourceConfig struct {
 	sdk.DefaultSourceMiddleware
 	// Config includes parameters that are the same in the source and destination.
 	config.Config
-	// SourceConfigParam must be provided by the user.
-	SourceConfigParam string `json:"sourceConfigParam" validate:"required"`
 }
 
 func (s *SourceConfig) Validate(context.Context) error {
