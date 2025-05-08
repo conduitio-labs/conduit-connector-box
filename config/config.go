@@ -12,25 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:generate conn-sdk-cli specgen
+package config
 
-package box
-
-import (
-	_ "embed"
-
-	"github.com/conduitio-labs/conduit-connector-box/destination"
-	"github.com/conduitio-labs/conduit-connector-box/source"
-	sdk "github.com/conduitio/conduit-connector-sdk"
-)
-
-//go:embed connector.yaml
-var specs string
-
-var version = "(devel)"
-
-var Connector = sdk.Connector{
-	NewSpecification: sdk.YAMLSpecification(specs, version),
-	NewSource:        source.NewSource,
-	NewDestination:   destination.NewDestination,
+type Config struct {
+	Token    string `json:"token`
+	ParentID string `json:"parentID`
 }

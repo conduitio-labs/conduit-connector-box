@@ -7,15 +7,6 @@ specification:
   author: Your Name
   source:
     parameters:
-      - name: global_config_param_name
-        description: |-
-          GlobalConfigParam is named global_config_param_name and needs to be
-          provided by the user.
-        type: string
-        default: ""
-        validations:
-          - type: required
-            value: ""
       - name: sourceConfigParam
         description: SourceConfigParam must be provided by the user.
         type: string
@@ -85,15 +76,6 @@ specification:
             value: avro
   destination:
     parameters:
-      - name: global_config_param_name
-        description: |-
-          GlobalConfigParam is named global_config_param_name and needs to be
-          provided by the user.
-        type: string
-        default: ""
-        validations:
-          - type: required
-            value: ""
       - name: destinationConfigParam
         description: DestinationConfigParam must be either yes or no (defaults to yes).
         type: string

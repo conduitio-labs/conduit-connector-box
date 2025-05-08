@@ -22,11 +22,6 @@ pipelines:
       - id: example
         plugin: "box"
         settings:
-          # GlobalConfigParam is named global_config_param_name and needs to be
-          # provided by the user.
-          # Type: string
-          # Required: yes
-          global_config_param_name: ""
           # SourceConfigParam must be provided by the user.
           # Type: string
           # Required: yes
@@ -95,11 +90,6 @@ pipelines:
       - id: example
         plugin: "box"
         settings:
-          # GlobalConfigParam is named global_config_param_name and needs to be
-          # provided by the user.
-          # Type: string
-          # Required: yes
-          global_config_param_name: ""
           # DestinationConfigParam must be either yes or no (defaults to yes).
           # Type: string
           # Required: no
