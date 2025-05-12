@@ -75,6 +75,7 @@ func (d *Destination) Open(ctx context.Context) error {
 		}
 	}
 	d.sessions = make(map[string]session)
+	d.files = make(map[string][]byte)
 	return nil
 }
 
@@ -115,8 +116,6 @@ func (d *Destination) uploadFile(ctx context.Context, r opencdc.Record) error {
 	if err != nil {
 		return NewInvalidFileError("invalid file_size" + err.Error())
 	}
-
-	fmt.Println("payload......:", string(r.Payload.After.Bytes()))
 
 	response, err := d.client.Upload(ctx, filename, d.config.ParentID, r.Payload.After.Bytes())
 	if err != nil {
