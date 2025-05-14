@@ -40,14 +40,16 @@ type Destination struct {
 	sessions map[string]session
 	// files caches a file in memory. For Files > 4MB and < 20MB we append
 	// the chunked records and then upload it using box upload endpoint.
+	// It is also used to cache chunks for chunked upload.
 	files map[string][]byte
 }
 
 type session struct {
-	sessionID  string
-	partSize   int64
-	totalParts int64
-	parts      []box.Part
+	sessionID      string
+	partSize       int
+	totalParts     int
+	parts          []box.Part
+	partsProcessed int
 }
 
 type DestinationConfig struct {
@@ -75,6 +77,7 @@ func (d *Destination) Open(ctx context.Context) error {
 		}
 	}
 	d.sessions = make(map[string]session)
+	d.files = make(map[string][]byte)
 	return nil
 }
 
@@ -116,8 +119,6 @@ func (d *Destination) uploadFile(ctx context.Context, r opencdc.Record) error {
 		return NewInvalidFileError("invalid file_size" + err.Error())
 	}
 
-	fmt.Println("payload......:", string(r.Payload.After.Bytes()))
-
 	response, err := d.client.Upload(ctx, filename, d.config.ParentID, r.Payload.After.Bytes())
 	if err != nil {
 		return fmt.Errorf("error uploading file: %w", err)
@@ -156,7 +157,7 @@ func (d *Destination) handleFileChunk(ctx context.Context, r opencdc.Record) err
 			sess = d.sessions[metaData.hash]
 		}
 
-		if sess.partSize <= int64(maxRecordSize) {
+		if sess.partSize <= maxRecordSize {
 			// upload chunk one by one
 			shaSum := sha1.Sum(r.Payload.After.Bytes())
 			shaB64 := base64.StdEncoding.EncodeToString(shaSum[:])
@@ -188,18 +189,16 @@ func (d *Destination) handleFileChunk(ctx context.Context, r opencdc.Record) err
 }
 
 func (d *Destination) uploadLargeParts(ctx context.Context, sess session, metaData metadata, content []byte) error {
-	if metaData.index == 1 {
-		d.files[metaData.hash] = content
-		return nil
-	}
-
 	switch {
+	case metaData.index == 1:
+		d.files[metaData.hash] = content
+
 	case len(content)+len(d.files[metaData.hash]) == int(sess.partSize):
 		d.files[metaData.hash] = append(d.files[metaData.hash], content...)
 
 		shaSum := sha1.Sum(content)
 		shaB64 := base64.StdEncoding.EncodeToString(shaSum[:])
-		start := metaData.index * sess.partSize
+		start := sess.partsProcessed * sess.partSize
 		end := start + sess.partSize - 1
 		contentRange := fmt.Sprintf("bytes %d-%d/%d", start, end, metaData.filesize)
 
@@ -216,7 +215,7 @@ func (d *Destination) uploadLargeParts(ctx context.Context, sess session, metaDa
 
 		shaSum := sha1.Sum(content)
 		shaB64 := base64.StdEncoding.EncodeToString(shaSum[:])
-		start := metaData.index * sess.partSize
+		start := sess.partsProcessed * sess.partSize
 		end := start + sess.partSize - 1
 		contentRange := fmt.Sprintf("bytes %d-%d/%d", start, end, metaData.filesize)
 
@@ -302,8 +301,8 @@ func (d *Destination) cachedUpload(ctx context.Context, r opencdc.Record) error 
 type metadata struct {
 	filename    string
 	filesize    int64
-	index       int64
-	totalChunks int64
+	index       int
+	totalChunks int
 	hash        string
 }
 
@@ -317,7 +316,7 @@ func (d *Destination) extractMetadata(record opencdc.Record) (metadata, error) {
 			return metadata{}, NewInvalidChunkError("chunk_index not found")
 		}
 		var err error
-		meta.index, err = strconv.ParseInt(chunkIndex, 10, 64)
+		meta.index, err = strconv.Atoi(chunkIndex)
 		if err != nil {
 			return metadata{}, fmt.Errorf("failed to parse chunk_index: %w", err)
 		}
@@ -325,7 +324,7 @@ func (d *Destination) extractMetadata(record opencdc.Record) (metadata, error) {
 		if !ok {
 			return metadata{}, NewInvalidChunkError("total_chunk not found")
 		}
-		meta.totalChunks, err = strconv.ParseInt(total, 10, 64)
+		meta.totalChunks, err = strconv.Atoi(total)
 		if err != nil {
 			return metadata{}, fmt.Errorf("failed to parse total_chunks: %w", err)
 		}

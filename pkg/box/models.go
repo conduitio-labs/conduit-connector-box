@@ -47,10 +47,10 @@ type SessionRequest struct {
 type SessionResponse struct {
 	ID                string `json:"id"`
 	Type              string `json:"type"`
-	NumPartsProcessed int64  `json:"num_parts_processed"`
-	PartSize          int64  `json:"part_size"`
+	NumPartsProcessed int    `json:"num_parts_processed"`
+	PartSize          int    `json:"part_size"`
 	SessionExpiresAt  string `json:"session_expires_at"`
-	TotalParts        int64  `json:"total_parts"`
+	TotalParts        int    `json:"total_parts"`
 }
 
 // UploadChunkResponse contains information about an individual chunk uploaded as part of a session.
