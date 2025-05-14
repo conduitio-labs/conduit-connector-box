@@ -16,20 +16,22 @@ package box
 
 import (
 	"context"
+	"io"
 )
 
 type Box interface {
 	// Download returns the contents of a file in binary format.
+	// This supports an optional Range header to retrieve partial content.
 	// Docs: https://developer.box.com/reference/get-files-id-content
-	Download(ctx context.Context) ([]byte, error)
+	Download(ctx context.Context, fileID string, rangeHeader string) (io.ReadCloser, error)
 
 	// UploadFile uploads a file to box folder.
 	// Docs: https://developer.box.com/reference/post-files-content
-	Upload(ctx context.Context, filename, parentID string, content []byte) (*UploadResponse, error)
+	Upload(ctx context.Context, filename string, parentID int, content []byte) (*UploadResponse, error)
 
 	// CreateSession starts a multi-chunk upload session for large files.
 	// Docs: https://developer.box.com/reference/post-files-upload-sessions
-	Session(ctx context.Context, filename, parentID string, filesize int64) (*SessionResponse, error)
+	Session(ctx context.Context, filename string, parentID int, filesize int64) (*SessionResponse, error)
 
 	// UploadChunk uploads a chunk to an existing upload session.
 	// Docs: https://developer.box.com/reference/put-files-upload-sessions-id
@@ -38,4 +40,16 @@ type Box interface {
 	// CommitUpload finishes a multi-chunk upload session and creates the file.
 	// Docs: https://developer.box.com/reference/post-files-upload-sessions-id-commit
 	CommitUpload(ctx context.Context, sessionID string, parts []Part) (*CommitUploadResponse, error)
+
+	// ListFolderItems returns the items (files/folders) within a Box folder.
+	// Docs: https://developer.box.com/reference/get-folders-id-items
+	ListFolderItems(ctx context.Context, folderID int, marker string, limit int) ([]Entry, string, bool, error)
+
+	// VerifyFolder checks whether a folder with the given ID exists and is accessible.
+	// Docs: https://developer.box.com/reference/get-folders-id
+	VerifyFolder(ctx context.Context, id int) (bool, error)
+
+	// GetEvents returns a list of events (such as file updates) starting from a given stream position.
+	// Docs: https://developer.box.com/reference/get-events
+	GetEvents(ctx context.Context, streamPosition int) ([]Event, int, error)
 }
