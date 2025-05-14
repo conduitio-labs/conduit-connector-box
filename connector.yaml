@@ -7,20 +7,38 @@ specification:
   author: Your Name
   source:
     parameters:
-      - name: parentID
-        description: ""
-        type: string
-        default: ""
-        validations:
-          - type: required
-            value: ""
       - name: token
-        description: ""
+        description: Token is used to authenticate API access.
         type: string
         default: ""
         validations:
           - type: required
             value: ""
+      - name: fileChunkSizeBytes
+        description: Size of a file chunk in bytes to split large files, maximum is 4MB.
+        type: int
+        default: "3145728"
+        validations: []
+      - name: parentID
+        description: ID of the Box directory to read/write files. Default is 0 for root directory.
+        type: int
+        default: "0"
+        validations: []
+      - name: pollingInterval
+        description: This period is used by worker to poll for new data at regular intervals.
+        type: duration
+        default: 5s
+        validations: []
+      - name: retries
+        description: Maximum number of retry attempts.
+        type: int
+        default: "0"
+        validations: []
+      - name: retryDelay
+        description: Delay between retry attempts.
+        type: duration
+        default: 10s
+        validations: []
       - name: sdk.batch.delay
         description: Maximum delay before an incomplete batch is read from the source.
         type: duration
@@ -64,7 +82,7 @@ specification:
       - name: sdk.schema.extract.payload.enabled
         description: Whether to extract and encode the record payload with a schema.
         type: bool
-        default: "true"
+        default: "false"
         validations: []
       - name: sdk.schema.extract.payload.subject
         description: |-
@@ -83,20 +101,18 @@ specification:
             value: avro
   destination:
     parameters:
-      - name: parentID
-        description: ""
-        type: string
-        default: ""
-        validations:
-          - type: required
-            value: ""
       - name: token
-        description: ""
+        description: Token is used to authenticate API access.
         type: string
         default: ""
         validations:
           - type: required
             value: ""
+      - name: parentID
+        description: ID of the Box directory to read/write files. Default is 0 for root directory.
+        type: int
+        default: "0"
+        validations: []
       - name: sdk.batch.delay
         description: Maximum delay before an incomplete batch is written to the destination.
         type: duration

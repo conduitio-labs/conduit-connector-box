@@ -16,72 +16,161 @@ package source
 
 import (
 	"context"
+	"fmt"
+	"sync"
+	"time"
 
 	"github.com/conduitio-labs/conduit-connector-box/config"
+	"github.com/conduitio-labs/conduit-connector-box/pkg/box"
+	"github.com/conduitio/conduit-commons/lang"
 	"github.com/conduitio/conduit-commons/opencdc"
 	sdk "github.com/conduitio/conduit-connector-sdk"
+)
+
+var (
+	ErrSourceClosed     = fmt.Errorf("error source not opened for reading")
+	ErrReadingData      = fmt.Errorf("error reading data")
+	ErrInvalidBatchSize = fmt.Errorf("batch size is out of allowed range [1-1000]")
 )
 
 type Source struct {
 	sdk.UnimplementedSource
 
-	config           SourceConfig
-	lastPositionRead opencdc.Position //nolint:unused // this is just an example
+	config    Config
+	position  *Position
+	client    box.Box
+	ch        chan opencdc.Record
+	workersWg *sync.WaitGroup
 }
 
-type SourceConfig struct {
+type Config struct {
 	sdk.DefaultSourceMiddleware
-	// Config includes parameters that are the same in the source and destination.
 	config.Config
+
+	// This period is used by worker to poll for new data at regular intervals.
+	PollingInterval time.Duration `json:"pollingInterval" default:"5s"`
+	// Size of a file chunk in bytes to split large files, maximum is 4MB.
+	FileChunkSizeBytes int `json:"fileChunkSizeBytes" default:"3145728"`
+	// Maximum number of retry attempts.
+	Retries int `json:"retries" default:"0"`
+	// Delay between retry attempts.
+	RetryDelay time.Duration `json:"retryDelay" default:"10s"`
 }
 
-func (s *SourceConfig) Validate(context.Context) error {
-	// Custom validation or parsing should be implemented here.
+// Validate checks if the configuration values are within allowed Box limits.
+func (c *Config) Validate(_ context.Context) error {
+	// c.BatchSize must be 1-1000 per Box API requirements.
+	// Docs: https://developer.box.com/reference/get-folders-id-items/
+	if c.BatchSize == nil || *c.BatchSize < 1 || *c.BatchSize > 1000 {
+		return ErrInvalidBatchSize
+	}
+
 	return nil
 }
 
 func NewSource() sdk.Source {
-	// Create Source and wrap it in the default middleware.
-	return sdk.SourceWithMiddleware(&Source{})
+	return sdk.SourceWithMiddleware(&Source{
+		config: Config{
+			DefaultSourceMiddleware: sdk.DefaultSourceMiddleware{
+				// disable schema extraction by default, as the source produces raw payload data
+				SourceWithSchemaExtraction: sdk.SourceWithSchemaExtraction{
+					PayloadEnabled: lang.Ptr(false),
+				},
+			},
+		},
+	})
 }
 
 func (s *Source) Config() sdk.SourceConfig {
 	return &s.config
 }
 
-func (s *Source) Open(_ context.Context, _ opencdc.Position) error {
-	// Open is called after Configure to signal the plugin it can prepare to
-	// start producing records. If needed, the plugin should open connections in
-	// this function. The position parameter will contain the position of the
-	// last record that was successfully processed, Source should therefore
-	// start producing records after this position. The context passed to Open
-	// will be cancelled once the plugin receives a stop signal from Conduit.
+func (s *Source) Open(ctx context.Context, position opencdc.Position) error {
+	sdk.Logger(ctx).Info().Msg("Opening Box source")
+
+	var err error
+	s.position, err = ParseSDKPosition(position)
+	if err != nil {
+		return fmt.Errorf("error parsing sdk position: %w", err)
+	}
+
+	if s.client == nil {
+		s.client, err = box.NewHTTPClient(s.config.Token)
+		if err != nil {
+			return fmt.Errorf("error creating http client for box: %w", err)
+		}
+	}
+
+	// Verify folder exists
+	if s.config.ParentID != 0 {
+		isFolder, err := s.client.VerifyFolder(ctx, s.config.ParentID)
+		if err != nil || !isFolder {
+			return fmt.Errorf("error verifying folder id: %w", err)
+		}
+	}
+
+	s.ch = make(chan opencdc.Record, 5)
+	s.workersWg = &sync.WaitGroup{}
+
+	// Start worker
+	s.workersWg.Add(1)
+	go func() {
+		NewWorker(
+			s.client,
+			s.config,
+			s.position,
+			s.ch,
+			s.workersWg,
+		).Start(ctx)
+	}()
+
 	return nil
 }
 
-func (s *Source) ReadN(context.Context, int) ([]opencdc.Record, error) {
-	// ReadN is the same as Read, but returns a batch of records. The connector
-	// is expected to return at most n records. If there are fewer records
-	// available, it should return all of them. If there are no records available
-	// it should block until there are records available or the context is
-	// cancelled. If the context is cancelled while ReadN is running, it should
-	// return the context error.
-	return []opencdc.Record{}, nil
+func (s *Source) ReadN(ctx context.Context, n int) ([]opencdc.Record, error) {
+	if s.ch == nil {
+		return nil, ErrSourceClosed
+	}
+
+	records := make([]opencdc.Record, 0, n)
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case r, ok := <-s.ch:
+		if !ok {
+			return nil, ErrReadingData
+		}
+		records = append(records, r)
+	}
+
+	for len(records) < n {
+		select {
+		case r, ok := <-s.ch:
+			if !ok {
+				break
+			}
+			records = append(records, r)
+		default:
+			return records, nil
+		}
+	}
+
+	return records, nil
 }
 
-func (s *Source) Ack(_ context.Context, _ opencdc.Position) error {
-	// Ack signals to the implementation that the record with the supplied
-	// position was successfully processed. This method might be called after
-	// the context of Read is already cancelled, since there might be
-	// outstanding acks that need to be delivered. When Teardown is called it is
-	// guaranteed there won't be any more calls to Ack.
-	// Ack can be called concurrently with Read.
+func (s *Source) Ack(ctx context.Context, position opencdc.Position) error {
+	sdk.Logger(ctx).Trace().Str("position", string(position)).Msg("got ack")
 	return nil
 }
 
-func (s *Source) Teardown(_ context.Context) error {
-	// Teardown signals to the plugin that there will be no more calls to any
-	// other function. After Teardown returns, the plugin should be ready for a
-	// graceful shutdown.
+func (s *Source) Teardown(ctx context.Context) error {
+	sdk.Logger(ctx).Info().Msg("Tearing down Box source")
+	if s.workersWg != nil {
+		s.workersWg.Wait()
+	}
+	if s.ch != nil {
+		close(s.ch)
+		s.ch = nil
+	}
 	return nil
 }

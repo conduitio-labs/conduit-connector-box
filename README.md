@@ -22,14 +22,32 @@ pipelines:
       - id: example
         plugin: "box"
         settings:
-          # 
-          # Type: string
-          # Required: yes
-          parentID: ""
-          # 
+          # Token is used to authenticate API access.
           # Type: string
           # Required: yes
           token: ""
+          # Size of a file chunk in bytes to split large files, maximum is 4MB.
+          # Type: int
+          # Required: no
+          fileChunkSizeBytes: "3145728"
+          # ID of the Box directory to read/write files. Default is 0 for root
+          # directory.
+          # Type: int
+          # Required: no
+          parentID: "0"
+          # This period is used by worker to poll for new data at regular
+          # intervals.
+          # Type: duration
+          # Required: no
+          pollingInterval: "5s"
+          # Maximum number of retry attempts.
+          # Type: int
+          # Required: no
+          retries: "0"
+          # Delay between retry attempts.
+          # Type: duration
+          # Required: no
+          retryDelay: "10s"
           # Maximum delay before an incomplete batch is read from the source.
           # Type: duration
           # Required: no
@@ -63,7 +81,7 @@ pipelines:
           # Whether to extract and encode the record payload with a schema.
           # Type: bool
           # Required: no
-          sdk.schema.extract.payload.enabled: "true"
+          sdk.schema.extract.payload.enabled: "false"
           # The subject of the payload schema. If the record metadata contains
           # the field "opencdc.collection" it is prepended to the subject name
           # and separated with a dot.
@@ -94,14 +112,15 @@ pipelines:
       - id: example
         plugin: "box"
         settings:
-          # 
-          # Type: string
-          # Required: yes
-          parentID: ""
-          # 
+          # Token is used to authenticate API access.
           # Type: string
           # Required: yes
           token: ""
+          # ID of the Box directory to read/write files. Default is 0 for root
+          # directory.
+          # Type: int
+          # Required: no
+          parentID: "0"
           # Maximum delay before an incomplete batch is written to the
           # destination.
           # Type: duration
