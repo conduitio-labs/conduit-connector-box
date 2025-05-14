@@ -159,6 +159,17 @@ func (c *HTTPClient) CommitUpload(ctx context.Context, sessionID string, parts [
 	return response, nil
 }
 
+func (c *HTTPClient) Delete(ctx context.Context, fileID string) error {
+	url := fmt.Sprintf("%s/api/2.0/files/%s", BaseURL, fileID)
+	headers := map[string]string{"Content-Type": "application/json"}
+	resp, err := c.makeRequest(ctx, http.MethodDelete, url, headers, nil, false)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}
+
 func (c *HTTPClient) makeRequest(ctx context.Context, method, url string, headers map[string]string, reqBody io.Reader, skipAuth bool) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, method, url, reqBody)
 	if err != nil {

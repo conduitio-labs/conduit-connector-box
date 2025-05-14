@@ -84,6 +84,12 @@ func (d *Destination) Open(ctx context.Context) error {
 func (d *Destination) Write(ctx context.Context, records []opencdc.Record) (int, error) {
 	for i, record := range records {
 		switch {
+		case record.Operation == opencdc.OperationDelete:
+			err := d.client.Delete(ctx, record.Metadata["file_id"])
+			if err != nil {
+				return i, fmt.Errorf("failed to delete file: %w", err)
+			}
+
 		case record.Metadata["is_chunked"] == "true":
 			err := d.handleFileChunk(ctx, record)
 			if err != nil {

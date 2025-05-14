@@ -38,4 +38,8 @@ type Box interface {
 	// CommitUpload finishes a multi-chunk upload session and creates the file.
 	// Docs: https://developer.box.com/reference/post-files-upload-sessions-id-commit
 	CommitUpload(ctx context.Context, sessionID string, parts []Part) (*CommitUploadResponse, error)
+
+	// Delete deletes a file with given fileID.
+	// Docs: https://developer.box.com/reference/delete-files-id
+	Delete(ctx context.Context, fileID string) error
 }
