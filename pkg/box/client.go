@@ -53,7 +53,12 @@ func (c *HTTPClient) Download(ctx context.Context) ([]byte, error) {
 	return nil, nil
 }
 
-func (c *HTTPClient) Upload(ctx context.Context, filename, parentID string, content []byte) (*UploadResponse, error) {
+func (c *HTTPClient) Upload(ctx context.Context, filename, parentID, fileID string, content []byte) (*UploadResponse, error) {
+	url := fmt.Sprintf("%s/api/2.0/files/content", UploadBaseURL)
+	if fileID != "" {
+		url = fmt.Sprintf("%s/api/2.0/files/%s/content", UploadBaseURL, fileID)
+	}
+
 	var requestBody bytes.Buffer
 	writer := multipart.NewWriter(&requestBody)
 	attributes := fmt.Sprintf(`{"name":"%s", "parent":{"id":"%s"}}`, filename, parentID)
@@ -77,7 +82,7 @@ func (c *HTTPClient) Upload(ctx context.Context, filename, parentID string, cont
 	}
 
 	headers := map[string]string{"Content-Type": writer.FormDataContentType()}
-	resp, err := c.makeRequest(ctx, http.MethodPost, UploadBaseURL+"/api/2.0/files/content", headers, &requestBody, false)
+	resp, err := c.makeRequest(ctx, http.MethodPost, url, headers, &requestBody, false)
 	if err != nil {
 		return nil, err
 	}
@@ -90,19 +95,27 @@ func (c *HTTPClient) Upload(ctx context.Context, filename, parentID string, cont
 	return response, nil
 }
 
-func (c *HTTPClient) Session(ctx context.Context, filename, parentID string, filesize int64) (*SessionResponse, error) {
-	request := SessionRequest{
-		FolderID: parentID,
-		FileName: filename,
-		FileSize: filesize,
+func (c *HTTPClient) Session(ctx context.Context, filename, parentID, fileID string, filesize int64) (*SessionResponse, error) {
+	request := SessionRequest{}
+	url := ""
+
+	if fileID != "" {
+		request.FileSize = filesize
+		url = fmt.Sprintf("%s/api/2.0/files/%s/upload_sessions", UploadBaseURL, fileID)
+	} else {
+		request.FolderID = parentID
+		request.FileName = filename
+		request.FileSize = filesize
+		url = fmt.Sprintf("%s/api/2.0/files/upload_sessions", UploadBaseURL)
 	}
+
 	body, err := json.Marshal(request)
 	if err != nil {
 		return nil, err
 	}
 
 	headers := map[string]string{"Content-Type": "application/json"}
-	resp, err := c.makeRequest(ctx, http.MethodPost, UploadBaseURL+"/api/2.0/files/upload_sessions", headers, bytes.NewReader(body), false)
+	resp, err := c.makeRequest(ctx, http.MethodPost, url, headers, bytes.NewReader(body), false)
 	if err != nil {
 		return nil, err
 	}
@@ -119,6 +132,7 @@ func (c *HTTPClient) UploadChunk(ctx context.Context, chunk []byte, sessionID, d
 	headers := map[string]string{
 		"Content-Range": contentRange,
 		"Digest":        "SHA=" + digest,
+		"Content-Type":  "application/octet-stream",
 	}
 
 	url := fmt.Sprintf("%s/api/2.0/files/upload_sessions/%s", UploadBaseURL, sessionID)
@@ -135,7 +149,7 @@ func (c *HTTPClient) UploadChunk(ctx context.Context, chunk []byte, sessionID, d
 	return response, nil
 }
 
-func (c *HTTPClient) CommitUpload(ctx context.Context, sessionID string, parts []Part) (*CommitUploadResponse, error) {
+func (c *HTTPClient) CommitUpload(ctx context.Context, sessionID, digest string, parts []Part) (*CommitUploadResponse, error) {
 	url := fmt.Sprintf("%s/api/2.0/files/upload_sessions/%s/commit", UploadBaseURL, sessionID)
 	request := &CommitUploadRequest{
 		Parts: parts,
@@ -145,7 +159,10 @@ func (c *HTTPClient) CommitUpload(ctx context.Context, sessionID string, parts [
 		return nil, err
 	}
 
-	headers := map[string]string{"Content-Type": "application/json"}
+	headers := map[string]string{
+		"Content-Type": "application/json",
+		"Digest":       "SHA=" + digest,
+	}
 	resp, err := c.makeRequest(ctx, http.MethodPost, url, headers, bytes.NewReader(body), false)
 	if err != nil {
 		return nil, err
@@ -247,8 +264,8 @@ type UploadResponse struct {
 }
 
 type SessionRequest struct {
-	FolderID string `json:"folder_id"`
-	FileName string `json:"file_name"`
+	FolderID string `json:"folder_id,omitempty"`
+	FileName string `json:"file_name,omitempty"`
 	FileSize int64  `json:"file_size"`
 }
 
@@ -262,12 +279,7 @@ type SessionResponse struct {
 }
 
 type UploadChunkResponse struct {
-	Part struct {
-		Offset int    `json:"offset"`
-		PartID string `json:"part_id"`
-		Sha1   string `json:"sha1"`
-		Size   int    `json:"size"`
-	} `json:"part"`
+	Part Part `json:"part"`
 }
 
 type CommitUploadRequest struct {
