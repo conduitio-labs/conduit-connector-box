@@ -22,15 +22,14 @@ pipelines:
       - id: example
         plugin: "box"
         settings:
-          # GlobalConfigParam is named global_config_param_name and needs to be
-          # provided by the user.
+          # 
           # Type: string
           # Required: yes
-          global_config_param_name: ""
-          # SourceConfigParam must be provided by the user.
+          parentID: ""
+          # 
           # Type: string
           # Required: yes
-          sourceConfigParam: ""
+          token: ""
           # Maximum delay before an incomplete batch is read from the source.
           # Type: duration
           # Required: no
@@ -95,15 +94,14 @@ pipelines:
       - id: example
         plugin: "box"
         settings:
-          # GlobalConfigParam is named global_config_param_name and needs to be
-          # provided by the user.
+          # 
           # Type: string
           # Required: yes
-          global_config_param_name: ""
-          # DestinationConfigParam must be either yes or no (defaults to yes).
+          parentID: ""
+          # 
           # Type: string
-          # Required: no
-          destinationConfigParam: "yes"
+          # Required: yes
+          token: ""
           # Maximum delay before an incomplete batch is written to the
           # destination.
           # Type: duration
