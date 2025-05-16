@@ -23,7 +23,6 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
-	"time"
 )
 
 var (
@@ -283,10 +282,7 @@ type UploadChunkResponse struct {
 }
 
 type CommitUploadRequest struct {
-	Parts      []Part `json:"parts"`
-	Attributes struct {
-		ContentModifiedAt time.Time `json:"content_modified_at"`
-	} `json:"attributes"`
+	Parts []Part `json:"parts"`
 }
 
 type Part struct {
