@@ -16,7 +16,7 @@ package destination
 
 import (
 	"context"
-	"crypto/sha1"
+	"crypto/sha1" //nolint:gosec // box expects sha1 hash in api headers.
 	"encoding/base64"
 	"fmt"
 	"strconv"
@@ -57,47 +57,34 @@ func (d *Destination) handleFileChunk(ctx context.Context, r opencdc.Record) err
 		return err
 	}
 
-	if metaData.filesize < int64(minChunkUploadSize) {
+	switch {
+	case metaData.filesize < int64(minChunkUploadSize):
 		return d.cachedUpload(ctx, r)
-	}
 
-	if metaData.filesize >= int64(minChunkUploadSize) {
+	case metaData.filesize >= int64(minChunkUploadSize):
 		sess, ok := d.sessions[metaData.hash]
 		if !ok && metaData.index == 1 {
-			sessionResponse, err := d.client.Session(ctx, metaData.filename, d.config.ParentID, metaData.fileID, metaData.filesize)
+			err := d.createSession(ctx, metaData)
 			if err != nil {
-				return fmt.Errorf("error creating session: %w", err)
-			}
-			d.sessions[metaData.hash] = session{
-				sessionID:  sessionResponse.ID,
-				partSize:   sessionResponse.PartSize,
-				totalParts: sessionResponse.TotalParts,
-				parts:      []box.Part{},
-				hasher:     sha1.New(),
+				return err
 			}
 			sess = d.sessions[metaData.hash]
 		}
 
 		if sess.partSize <= maxRecordSize {
-			// upload chunk one by one
-			shaSum := sha1.Sum(r.Payload.After.Bytes())
-			shaB64 := base64.StdEncoding.EncodeToString(shaSum[:])
-			start := metaData.index * sess.partSize
-			end := start + sess.partSize - 1
-			contentRange := fmt.Sprintf("bytes %d-%d/%d", start, end, metaData.filesize)
-
-			_, err := d.client.UploadChunk(ctx, r.Payload.After.Bytes(), sess.sessionID, shaB64, contentRange)
+			err = d.processPart(ctx, metaData)
 			if err != nil {
-				return fmt.Errorf("error uploading chunk: %w", err)
+				return err
 			}
 
 			if metaData.index == metaData.totalChunks {
 				_, err := d.client.CommitUpload(ctx, sess.sessionID, metaData.hash, sess.parts)
 				if err != nil {
-					return fmt.Errorf("error comitting chunk upload: %w", err)
+					return fmt.Errorf("error committing chunk upload: %w", err)
 				}
-				// delete session
+
 				delete(d.sessions, metaData.hash)
+				delete(d.files, metaData.hash)
 			}
 
 			return nil
@@ -112,95 +99,98 @@ func (d *Destination) handleFileChunk(ctx context.Context, r opencdc.Record) err
 	return nil
 }
 
+func (d *Destination) createSession(ctx context.Context, metaData metadata) error {
+	sessionResponse, err := d.client.Session(ctx, metaData.filename, d.config.ParentID, metaData.fileID, metaData.filesize)
+	if err != nil {
+		return fmt.Errorf("error creating session: %w", err)
+	}
+
+	d.sessions[metaData.hash] = session{
+		sessionID:  sessionResponse.ID,
+		partSize:   sessionResponse.PartSize,
+		totalParts: sessionResponse.TotalParts,
+		parts:      []box.Part{},
+		hasher:     sha1.New(), //nolint:gosec // box expects sha1 hash in api headers.
+	}
+
+	return nil
+}
+
 func (d *Destination) uploadLargeParts(ctx context.Context, metaData metadata, content []byte) error {
+	contentLength := len(content) + len(d.files[metaData.hash])
 	switch {
 	case metaData.index == 1:
 		d.files[metaData.hash] = content
 
-	case len(content)+len(d.files[metaData.hash]) == int(d.sessions[metaData.hash].partSize):
+	case contentLength == d.sessions[metaData.hash].partSize:
 		d.files[metaData.hash] = append(d.files[metaData.hash], content...)
-
-		shaSum := sha1.Sum(d.files[metaData.hash])
-		shaB64 := base64.StdEncoding.EncodeToString(shaSum[:])
-		start := d.sessions[metaData.hash].partsProcessed * d.sessions[metaData.hash].partSize
-		end := start + d.sessions[metaData.hash].partSize - 1
-		contentRange := fmt.Sprintf("bytes %d-%d/%d", start, end, metaData.filesize)
-
-		resp, err := d.client.UploadChunk(ctx, d.files[metaData.hash], d.sessions[metaData.hash].sessionID, shaB64, contentRange)
-		if err != nil {
-			return fmt.Errorf("error uploading chunk: %w", err)
-		}
-
-		s := d.sessions[metaData.hash]
-		s.partsProcessed++
-		s.parts = append(s.parts, resp.Part)
-		_, err = s.hasher.Write(d.files[metaData.hash])
+		err := d.processPart(ctx, metaData)
 		if err != nil {
 			return err
 		}
-		d.sessions[metaData.hash] = s
-		d.files[metaData.hash] = []byte{}
 
-	case len(content)+len(d.files[metaData.hash]) > int(d.sessions[metaData.hash].partSize):
-		minus := int(d.sessions[metaData.hash].partSize) - len(d.files[metaData.hash])
+	case contentLength > d.sessions[metaData.hash].partSize:
+		minus := d.sessions[metaData.hash].partSize - len(d.files[metaData.hash])
 		d.files[metaData.hash] = append(d.files[metaData.hash], content[:minus]...)
-
-		shaSum := sha1.Sum(d.files[metaData.hash])
-		shaB64 := base64.StdEncoding.EncodeToString(shaSum[:])
-		start := d.sessions[metaData.hash].partsProcessed * d.sessions[metaData.hash].partSize
-		end := start + d.sessions[metaData.hash].partSize - 1
-		contentRange := fmt.Sprintf("bytes %d-%d/%d", start, end, metaData.filesize)
-
-		resp, err := d.client.UploadChunk(ctx, d.files[metaData.hash], d.sessions[metaData.hash].sessionID, shaB64, contentRange)
-		if err != nil {
-			return fmt.Errorf("error uploading chunk: %w", err)
-		}
-
-		s := d.sessions[metaData.hash]
-		s.partsProcessed++
-		s.parts = append(s.parts, resp.Part)
-		_, err = s.hasher.Write(d.files[metaData.hash])
+		err := d.processPart(ctx, metaData)
 		if err != nil {
 			return err
 		}
-		d.sessions[metaData.hash] = s
-		d.files[metaData.hash] = []byte{}
 		d.files[metaData.hash] = append(d.files[metaData.hash], content[minus:]...)
 
-	case len(content)+len(d.files[metaData.hash]) < int(d.sessions[metaData.hash].partSize):
+	case contentLength < d.sessions[metaData.hash].partSize:
 		d.files[metaData.hash] = append(d.files[metaData.hash], content...)
 	}
 
 	if metaData.index == metaData.totalChunks {
 		if len(d.files[metaData.hash]) > 0 {
-			shaSum := sha1.Sum(d.files[metaData.hash])
-			shaB64 := base64.StdEncoding.EncodeToString(shaSum[:])
-			start := d.sessions[metaData.hash].partsProcessed * d.sessions[metaData.hash].partSize
-			end := start + len(d.files[metaData.hash]) - 1
-			contentRange := fmt.Sprintf("bytes %d-%d/%d", start, end, metaData.filesize)
-
-			resp, err := d.client.UploadChunk(ctx, d.files[metaData.hash], d.sessions[metaData.hash].sessionID, shaB64, contentRange)
-			if err != nil {
-				return fmt.Errorf("error uploading chunk: %w", err)
-			}
-			s := d.sessions[metaData.hash]
-			s.partsProcessed++
-			s.parts = append(s.parts, resp.Part)
-			_, err = s.hasher.Write(d.files[metaData.hash])
+			err := d.processPart(ctx, metaData)
 			if err != nil {
 				return err
 			}
-			d.sessions[metaData.hash] = s
-			d.files[metaData.hash] = []byte{}
 		}
 
 		digest := base64.StdEncoding.EncodeToString(d.sessions[metaData.hash].hasher.Sum(nil))
 		_, err := d.client.CommitUpload(ctx, d.sessions[metaData.hash].sessionID, digest, d.sessions[metaData.hash].parts)
 		if err != nil {
-			return fmt.Errorf("error comitting chunk upload: %w", err)
+			return fmt.Errorf("error committing chunk upload: %w", err)
 		}
+
+		delete(d.sessions, metaData.hash)
+		delete(d.files, metaData.hash)
 	}
 
+	return nil
+}
+
+func (d *Destination) processPart(ctx context.Context, metaData metadata) error {
+	shaSum := sha1.Sum(d.files[metaData.hash]) //nolint:gosec // box expects sha1 hash in api headers.
+	shaB64 := base64.StdEncoding.EncodeToString(shaSum[:])
+
+	start := d.sessions[metaData.hash].partsProcessed * d.sessions[metaData.hash].partSize
+	var end int
+	if metaData.index == metaData.totalChunks && len(d.files[metaData.hash]) > 0 {
+		end = start + len(d.files[metaData.hash]) - 1
+	} else {
+		end = start + d.sessions[metaData.hash].partSize - 1
+	}
+	contentRange := fmt.Sprintf("bytes %d-%d/%d", start, end, metaData.filesize)
+
+	resp, err := d.client.UploadChunk(ctx, d.files[metaData.hash], d.sessions[metaData.hash].sessionID, shaB64, contentRange)
+	if err != nil {
+		return fmt.Errorf("error uploading chunk: %w", err)
+	}
+
+	s := d.sessions[metaData.hash]
+	s.partsProcessed++
+	s.parts = append(s.parts, resp.Part)
+	_, err = s.hasher.Write(d.files[metaData.hash])
+	if err != nil {
+		return fmt.Errorf("error hasher write: %w", err)
+	}
+
+	d.sessions[metaData.hash] = s
+	d.files[metaData.hash] = []byte{}
 	return nil
 }
 
@@ -224,7 +214,7 @@ func (d *Destination) cachedUpload(ctx context.Context, r opencdc.Record) error 
 	if metaData.index == metaData.totalChunks {
 		response, err := d.client.Upload(ctx, metaData.filename, d.config.ParentID, metaData.fileID, d.files[metaData.hash])
 		if err != nil {
-			return err
+			return fmt.Errorf("error uploading chunk: %w", err)
 		}
 
 		if response.Entries[0].Size != metaData.filesize {

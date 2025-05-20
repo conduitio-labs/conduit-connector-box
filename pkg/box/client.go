@@ -48,7 +48,7 @@ func NewHTTPClient(accessToken string) (*HTTPClient, error) {
 	}, nil
 }
 
-func (c *HTTPClient) Download(ctx context.Context) ([]byte, error) {
+func (c *HTTPClient) Download(_ context.Context) ([]byte, error) {
 	return nil, nil
 }
 
@@ -63,25 +63,25 @@ func (c *HTTPClient) Upload(ctx context.Context, filename, parentID, fileID stri
 	attributes := fmt.Sprintf(`{"name":"%s", "parent":{"id":"%s"}}`, filename, parentID)
 	err := writer.WriteField("attributes", attributes)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error multipart write field: %w", err)
 	}
 
 	part, err := writer.CreateFormFile("file", filename)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error creating form file: %w", err)
 	}
 	_, err = io.Copy(part, bytes.NewReader(content))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error copying content: %w", err)
 	}
 
 	err = writer.Close()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error closing multipart writer: %w", err)
 	}
 
 	headers := map[string]string{"Content-Type": writer.FormDataContentType()}
-	resp, err := c.makeRequest(ctx, http.MethodPost, url, headers, &requestBody, false)
+	resp, err := c.makeRequest(ctx, http.MethodPost, url, headers, &requestBody)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +96,7 @@ func (c *HTTPClient) Upload(ctx context.Context, filename, parentID, fileID stri
 
 func (c *HTTPClient) Session(ctx context.Context, filename, parentID, fileID string, filesize int64) (*SessionResponse, error) {
 	request := SessionRequest{}
-	url := ""
+	var url string
 
 	if fileID != "" {
 		request.FileSize = filesize
@@ -110,11 +110,11 @@ func (c *HTTPClient) Session(ctx context.Context, filename, parentID, fileID str
 
 	body, err := json.Marshal(request)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error marshalling session request: %w", err)
 	}
 
 	headers := map[string]string{"Content-Type": "application/json"}
-	resp, err := c.makeRequest(ctx, http.MethodPost, url, headers, bytes.NewReader(body), false)
+	resp, err := c.makeRequest(ctx, http.MethodPost, url, headers, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +135,7 @@ func (c *HTTPClient) UploadChunk(ctx context.Context, chunk []byte, sessionID, d
 	}
 
 	url := fmt.Sprintf("%s/api/2.0/files/upload_sessions/%s", UploadBaseURL, sessionID)
-	resp, err := c.makeRequest(ctx, http.MethodPut, url, headers, bytes.NewReader(chunk), false)
+	resp, err := c.makeRequest(ctx, http.MethodPut, url, headers, bytes.NewReader(chunk))
 	if err != nil {
 		return nil, err
 	}
@@ -155,14 +155,14 @@ func (c *HTTPClient) CommitUpload(ctx context.Context, sessionID, digest string,
 	}
 	body, err := json.Marshal(request)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error marshalling commit request: %w", err)
 	}
 
 	headers := map[string]string{
 		"Content-Type": "application/json",
 		"Digest":       "SHA=" + digest,
 	}
-	resp, err := c.makeRequest(ctx, http.MethodPost, url, headers, bytes.NewReader(body), false)
+	resp, err := c.makeRequest(ctx, http.MethodPost, url, headers, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +178,7 @@ func (c *HTTPClient) CommitUpload(ctx context.Context, sessionID, digest string,
 func (c *HTTPClient) Delete(ctx context.Context, fileID string) error {
 	url := fmt.Sprintf("%s/api/2.0/files/%s", BaseURL, fileID)
 	headers := map[string]string{"Content-Type": "application/json"}
-	resp, err := c.makeRequest(ctx, http.MethodDelete, url, headers, nil, false)
+	resp, err := c.makeRequest(ctx, http.MethodDelete, url, headers, nil)
 	if err != nil {
 		return err
 	}
@@ -186,16 +186,13 @@ func (c *HTTPClient) Delete(ctx context.Context, fileID string) error {
 	return nil
 }
 
-func (c *HTTPClient) makeRequest(ctx context.Context, method, url string, headers map[string]string, reqBody io.Reader, skipAuth bool) (*http.Response, error) {
+func (c *HTTPClient) makeRequest(ctx context.Context, method, url string, headers map[string]string, reqBody io.Reader) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, method, url, reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("create request failed: %w", err)
 	}
 
-	if !skipAuth {
-		req.Header.Set("Authorization", "Bearer "+c.accessToken)
-	}
-
+	req.Header.Set("Authorization", "Bearer "+c.accessToken)
 	for header, value := range headers {
 		req.Header.Set(header, value)
 	}

@@ -33,7 +33,7 @@ var (
 type Destination struct {
 	sdk.UnimplementedDestination
 
-	config   DestinationConfig
+	config   Config
 	client   box.Box
 	sessions map[string]session
 
@@ -52,7 +52,7 @@ type session struct {
 	hasher         hash.Hash
 }
 
-type DestinationConfig struct {
+type Config struct {
 	sdk.DefaultDestinationMiddleware
 	// Config includes parameters that are the same in the source and destination.
 	config.Config
@@ -83,14 +83,14 @@ func (d *Destination) Open(ctx context.Context) error {
 
 func (d *Destination) Write(ctx context.Context, records []opencdc.Record) (int, error) {
 	for i, record := range records {
-		switch {
-		case record.Operation == opencdc.OperationDelete:
+		switch record.Operation {
+		case opencdc.OperationDelete:
 			err := d.client.Delete(ctx, record.Metadata["box.file_id"])
 			if err != nil {
 				return i, fmt.Errorf("failed to delete file: %w", err)
 			}
 
-		default:
+		case opencdc.OperationCreate, opencdc.OperationUpdate, opencdc.OperationSnapshot:
 			if record.Metadata["is_chunked"] == "true" {
 				err := d.handleFileChunk(ctx, record)
 				if err != nil {

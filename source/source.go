@@ -25,17 +25,17 @@ import (
 type Source struct {
 	sdk.UnimplementedSource
 
-	config           SourceConfig
+	config           Config
 	lastPositionRead opencdc.Position //nolint:unused // this is just an example
 }
 
-type SourceConfig struct {
+type Config struct {
 	sdk.DefaultSourceMiddleware
 	// Config includes parameters that are the same in the source and destination.
 	config.Config
 }
 
-func (s *SourceConfig) Validate(context.Context) error {
+func (s *Config) Validate(context.Context) error {
 	// Custom validation or parsing should be implemented here.
 	return nil
 }
