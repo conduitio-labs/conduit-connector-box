@@ -27,11 +27,11 @@ type Box interface {
 
 	// UploadFile uploads a file to box folder.
 	// Docs: https://developer.box.com/reference/post-files-content
-	Upload(ctx context.Context, filename string, parentID int, content []byte) (*UploadResponse, error)
+	Upload(ctx context.Context, filename string, parentID int, fileID string, content []byte) (*UploadResponse, error)
 
-	// CreateSession starts a multi-chunk upload session for large files.
+	// Session starts a multi-chunk upload session for large files.
 	// Docs: https://developer.box.com/reference/post-files-upload-sessions
-	Session(ctx context.Context, filename string, parentID int, filesize int64) (*SessionResponse, error)
+	Session(ctx context.Context, filename string, parentID int, fileID string, filesize int64) (*SessionResponse, error)
 
 	// UploadChunk uploads a chunk to an existing upload session.
 	// Docs: https://developer.box.com/reference/put-files-upload-sessions-id
@@ -39,7 +39,11 @@ type Box interface {
 
 	// CommitUpload finishes a multi-chunk upload session and creates the file.
 	// Docs: https://developer.box.com/reference/post-files-upload-sessions-id-commit
-	CommitUpload(ctx context.Context, sessionID string, parts []Part) (*CommitUploadResponse, error)
+	CommitUpload(ctx context.Context, sessionID, digest string, parts []Part) (*CommitUploadResponse, error)
+
+	// Delete deletes a file with given fileID.
+	// Docs: https://developer.box.com/reference/delete-files-id
+	Delete(ctx context.Context, fileID string) error
 
 	// ListFolderItems returns the items (files/folders) within a Box folder.
 	// Docs: https://developer.box.com/reference/get-folders-id-items

@@ -38,8 +38,8 @@ type UploadResponse struct {
 
 // SessionRequest represents the payload to initiate a new chunked upload session.
 type SessionRequest struct {
-	FolderID int    `json:"folder_id"`
-	FileName string `json:"file_name"`
+	FolderID int    `json:"folder_id,omitempty"`
+	FileName string `json:"file_name,omitempty"`
 	FileSize int64  `json:"file_size"`
 }
 
@@ -55,20 +55,12 @@ type SessionResponse struct {
 
 // UploadChunkResponse contains information about an individual chunk uploaded as part of a session.
 type UploadChunkResponse struct {
-	Part struct {
-		Offset int    `json:"offset"`
-		PartID string `json:"part_id"`
-		Sha1   string `json:"sha1"`
-		Size   int    `json:"size"`
-	} `json:"part"`
+	Part Part `json:"part"`
 }
 
 // CommitUploadRequest defines the payload to finalize a chunked upload session.
 type CommitUploadRequest struct {
-	Parts      []Part `json:"parts"`
-	Attributes struct {
-		ContentModifiedAt time.Time `json:"content_modified_at"`
-	} `json:"attributes"`
+	Parts []Part `json:"parts"`
 }
 
 // Part represents a chunk of a file uploaded during a chunked session.
@@ -100,9 +92,12 @@ type Entry struct {
 		ID   string `json:"id"`
 		Name string `json:"name"`
 	} `json:"parent"`
-	Name       string    `json:"name"`
-	SequenceID string    `json:"sequence_id"`
-	Sha1       string    `json:"sha1"`
+	Name       string `json:"name"`
+	SequenceID string `json:"sequence_id"`
+	Sha1       string `json:"sha1"`
+	// ContentCreatedAt  time.Time `json:"content_created_at"`
+	// ContentModifiedAt time.Time `json:"content_modified_at"`
+	// CreatedAt         time.Time `json:"created_at"`
 	ModifiedAt time.Time `json:"modified_at"`
 	Size       int       `json:"size"`
 	Extension  string    `json:"extension"`

@@ -70,31 +70,36 @@ func (c *HTTPClient) Download(ctx context.Context, fileID string, rangeHeader st
 	return resp.Body, nil
 }
 
-func (c *HTTPClient) Upload(ctx context.Context, filename string, parentID int, content []byte) (*UploadResponse, error) {
+func (c *HTTPClient) Upload(ctx context.Context, filename string, parentID int, fileID string, content []byte) (*UploadResponse, error) {
+	url := fmt.Sprintf("%s/api/2.0/files/content", UploadBaseURL)
+	if fileID != "" {
+		url = fmt.Sprintf("%s/api/2.0/files/%s/content", UploadBaseURL, fileID)
+	}
+
 	var requestBody bytes.Buffer
 	writer := multipart.NewWriter(&requestBody)
 	attributes := fmt.Sprintf(`{"name":"%s", "parent":{"id":"%d"}}`, filename, parentID)
 	err := writer.WriteField("attributes", attributes)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error multipart write field: %w", err)
 	}
 
 	part, err := writer.CreateFormFile("file", filename)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error creating form file: %w", err)
 	}
 	_, err = io.Copy(part, bytes.NewReader(content))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error copying content: %w", err)
 	}
 
 	err = writer.Close()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error closing multipart writer: %w", err)
 	}
 
 	headers := map[string]string{"Content-Type": writer.FormDataContentType()}
-	resp, err := c.makeRequest(ctx, http.MethodPost, UploadBaseURL+"/api/2.0/files/content", headers, &requestBody)
+	resp, err := c.makeRequest(ctx, http.MethodPost, url, headers, &requestBody)
 	if err != nil {
 		return nil, err
 	}
@@ -107,19 +112,27 @@ func (c *HTTPClient) Upload(ctx context.Context, filename string, parentID int, 
 	return response, nil
 }
 
-func (c *HTTPClient) Session(ctx context.Context, filename string, parentID int, filesize int64) (*SessionResponse, error) {
-	request := SessionRequest{
-		FolderID: parentID,
-		FileName: filename,
-		FileSize: filesize,
+func (c *HTTPClient) Session(ctx context.Context, filename string, parentID int, fileID string, filesize int64) (*SessionResponse, error) {
+	request := SessionRequest{}
+	var url string
+
+	if fileID != "" {
+		request.FileSize = filesize
+		url = fmt.Sprintf("%s/api/2.0/files/%s/upload_sessions", UploadBaseURL, fileID)
+	} else {
+		request.FolderID = parentID
+		request.FileName = filename
+		request.FileSize = filesize
+		url = fmt.Sprintf("%s/api/2.0/files/upload_sessions", UploadBaseURL)
 	}
+
 	body, err := json.Marshal(request)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error marshalling session request: %w", err)
 	}
 
 	headers := map[string]string{"Content-Type": "application/json"}
-	resp, err := c.makeRequest(ctx, http.MethodPost, UploadBaseURL+"/api/2.0/files/upload_sessions", headers, bytes.NewReader(body))
+	resp, err := c.makeRequest(ctx, http.MethodPost, url, headers, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -136,6 +149,7 @@ func (c *HTTPClient) UploadChunk(ctx context.Context, chunk []byte, sessionID, d
 	headers := map[string]string{
 		"Content-Range": contentRange,
 		"Digest":        "SHA=" + digest,
+		"Content-Type":  "application/octet-stream",
 	}
 
 	url := fmt.Sprintf("%s/api/2.0/files/upload_sessions/%s", UploadBaseURL, sessionID)
@@ -152,17 +166,20 @@ func (c *HTTPClient) UploadChunk(ctx context.Context, chunk []byte, sessionID, d
 	return response, nil
 }
 
-func (c *HTTPClient) CommitUpload(ctx context.Context, sessionID string, parts []Part) (*CommitUploadResponse, error) {
+func (c *HTTPClient) CommitUpload(ctx context.Context, sessionID, digest string, parts []Part) (*CommitUploadResponse, error) {
 	url := fmt.Sprintf("%s/api/2.0/files/upload_sessions/%s/commit", UploadBaseURL, sessionID)
 	request := &CommitUploadRequest{
 		Parts: parts,
 	}
 	body, err := json.Marshal(request)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error marshalling commit request: %w", err)
 	}
 
-	headers := map[string]string{"Content-Type": "application/json"}
+	headers := map[string]string{
+		"Content-Type": "application/json",
+		"Digest":       "SHA=" + digest,
+	}
 	resp, err := c.makeRequest(ctx, http.MethodPost, url, headers, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -254,6 +271,17 @@ func (c *HTTPClient) GetEvents(ctx context.Context, streamPosition int) ([]Event
 	return result.Entries, result.NextStreamPosition, nil
 }
 
+func (c *HTTPClient) Delete(ctx context.Context, fileID string) error {
+	url := fmt.Sprintf("%s/api/2.0/files/%s", BaseURL, fileID)
+	headers := map[string]string{"Content-Type": "application/json"}
+	resp, err := c.makeRequest(ctx, http.MethodDelete, url, headers, nil)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}
+
 func (c *HTTPClient) makeRequest(ctx context.Context, method, url string, headers map[string]string, reqBody io.Reader) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, method, url, reqBody)
 	if err != nil {
@@ -261,7 +289,6 @@ func (c *HTTPClient) makeRequest(ctx context.Context, method, url string, header
 	}
 
 	req.Header.Set("Authorization", "Bearer "+c.accessToken)
-
 	for header, value := range headers {
 		req.Header.Set(header, value)
 	}
