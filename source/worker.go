@@ -226,9 +226,9 @@ func (w *Worker) processDeletedFile(ctx context.Context, entry box.Entry) error 
 	}
 
 	metadata := opencdc.Metadata{
-		"filename":                 entry.Name,
+		opencdc.MetadataFileName:   entry.Name,
 		"file_id":                  entry.ID,
-		"hash":                     entry.Sha1,
+		opencdc.MetadataFileHash:   entry.Sha1,
 		opencdc.MetadataCollection: entry.Parent.ID,
 	}
 
@@ -284,15 +284,15 @@ func (w *Worker) createChunkedRecord(entry box.Entry, chunkIdx, totalChunks int,
 	}
 
 	metadata := opencdc.Metadata{
-		"filename":                 entry.Name,
-		"parent":                   entry.Parent.Name,
-		"file_id":                  entry.ID,
-		opencdc.MetadataCollection: entry.Parent.ID,
-		"file_size":                fmt.Sprintf("%d", entry.Size),
-		"hash":                     entry.Sha1,
-		"chunk_index":              fmt.Sprintf("%d", chunkIdx),
-		"total_chunks":             fmt.Sprintf("%d", totalChunks),
-		"is_chunked":               "true",
+		opencdc.MetadataFileName:       entry.Name,
+		"parent":                       entry.Parent.Name,
+		"file_id":                      entry.ID,
+		opencdc.MetadataCollection:     entry.Parent.ID,
+		opencdc.MetadataFileSize:       fmt.Sprintf("%d", entry.Size),
+		opencdc.MetadataFileHash:       entry.Sha1,
+		opencdc.MetadataFileChunkIndex: fmt.Sprintf("%d", chunkIdx),
+		opencdc.MetadataFileChunkCount: fmt.Sprintf("%d", totalChunks),
+		opencdc.MetadataFileChunked:    "true",
 	}
 
 	return sdk.Util.Source.NewRecordCreate(
@@ -313,12 +313,12 @@ func (w *Worker) createRecord(entry box.Entry, data []byte) (opencdc.Record, err
 	}
 
 	metadata := opencdc.Metadata{
-		"filename":                 entry.Name,
+		opencdc.MetadataFileName:   entry.Name,
 		"parent":                   entry.Parent.Name,
 		"file_id":                  entry.ID,
 		opencdc.MetadataCollection: entry.Parent.ID,
-		"file_size":                fmt.Sprintf("%d", entry.Size),
-		"hash":                     entry.Sha1,
+		opencdc.MetadataFileSize:   fmt.Sprintf("%d", entry.Size),
+		opencdc.MetadataFileHash:   entry.Sha1,
 	}
 
 	return sdk.Util.Source.NewRecordCreate(
