@@ -92,12 +92,9 @@ type Entry struct {
 		ID   string `json:"id"`
 		Name string `json:"name"`
 	} `json:"parent"`
-	Name       string `json:"name"`
-	SequenceID string `json:"sequence_id"`
-	Sha1       string `json:"sha1"`
-	// ContentCreatedAt  time.Time `json:"content_created_at"`
-	// ContentModifiedAt time.Time `json:"content_modified_at"`
-	// CreatedAt         time.Time `json:"created_at"`
+	Name       string    `json:"name"`
+	SequenceID string    `json:"sequence_id"`
+	Sha1       string    `json:"sha1"`
 	ModifiedAt time.Time `json:"modified_at"`
 	Size       int       `json:"size"`
 	Extension  string    `json:"extension"`

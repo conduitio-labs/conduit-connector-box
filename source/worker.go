@@ -157,7 +157,7 @@ func (w *Worker) cdc(ctx context.Context) error {
 }
 
 func (w *Worker) processFile(ctx context.Context, entry box.Entry) error {
-	if entry.Type != typeFile {
+	if w.shouldSkipEntry(entry) {
 		return nil
 	}
 
@@ -200,6 +200,7 @@ func (w *Worker) processChunkedFile(ctx context.Context, entry box.Entry) error 
 }
 
 func (w *Worker) processFullFile(ctx context.Context, entry box.Entry) error {
+	fmt.Println("processing file ----- ", entry.Name)
 	fileData, err := w.downloadChunk(ctx, entry.ID, "")
 	if err != nil {
 		return fmt.Errorf("download failed: %w", err)
@@ -327,4 +328,14 @@ func (w *Worker) createRecord(entry box.Entry, data []byte) (opencdc.Record, err
 		opencdc.StructuredData{"id": entry.ID, "hash": entry.Sha1},
 		opencdc.RawData(data),
 	), nil
+}
+
+func (w *Worker) shouldSkipEntry(entry box.Entry) bool {
+	if entry.Type != typeFile ||
+		entry.Parent.ID != fmt.Sprintf("%d", w.config.ParentID) ||
+		entry.ModifiedAt.UnixNano() < w.lastProcessedTime {
+		return true
+	}
+
+	return false
 }
