@@ -85,13 +85,19 @@ func (d *Destination) Write(ctx context.Context, records []opencdc.Record) (int,
 	for i, record := range records {
 		switch record.Operation {
 		case opencdc.OperationDelete:
-			err := d.client.Delete(ctx, record.Metadata["box.file_id"])
+			filename := record.Metadata[opencdc.MetadataFileName]
+			fileID, err := d.getFileIDByFilename(ctx, filename)
+			if err != nil {
+				return i, err
+			}
+
+			err = d.client.Delete(ctx, fileID)
 			if err != nil {
 				return i, fmt.Errorf("failed to delete file: %w", err)
 			}
 
 		case opencdc.OperationCreate, opencdc.OperationUpdate, opencdc.OperationSnapshot:
-			if record.Metadata["is_chunked"] == "true" {
+			if record.Metadata[opencdc.MetadataFileChunked] == "true" {
 				err := d.handleFileChunk(ctx, record)
 				if err != nil {
 					return i, fmt.Errorf("failed to upload file chunk: %w", err)

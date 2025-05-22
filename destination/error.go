@@ -22,6 +22,7 @@ var (
 	ErrMissingFilename = fmt.Errorf("missing metadata filename")
 	ErrInvalidHash     = fmt.Errorf("missing or invalid content hash")
 	ErrInvalidSession  = fmt.Errorf("invalid session")
+	ErrFileNotFound    = fmt.Errorf("file not found")
 )
 
 type InvalidChunkError struct {
