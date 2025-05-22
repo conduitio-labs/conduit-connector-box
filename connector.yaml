@@ -2,18 +2,11 @@ version: "1.0"
 specification:
   name: box
   summary: Conduit connector for the box content management system.
-  description: Conduit connector for the box content management system.
+  description: "## Source\n\n## Destination\n\nThe Box Destination takes a Conduit record and uploads it to the remote box directory.\n\n### Create, Update and Snapshot Operations\n\nThe box destination connector uploads the records in 3 different ways. \n* For a file which is <= 4MB the uploads the single record file by simple box upload endpoint. \n* For a file which is >=4B and <= 20MB, it keeps the file records in memory and once the last\n  record is appended it uploads it using the simple box upload endpoint.\n* For a file which is > 20MB, it uploads the file using chunk upload endpoint. It first creates \n  a new session for chunk upload which gives session id and part size in response. Using this\n  session id and part size the records are then uploaded. It prepares the parts by keeping \n  them in memory and upload the parts one by one using chunk upload endpoint.\n"
   version: v0.0.1
   author: Your Name
   source:
     parameters:
-      - name: parentID
-        description: ""
-        type: string
-        default: ""
-        validations:
-          - type: required
-            value: ""
       - name: token
         description: ""
         type: string
@@ -21,6 +14,11 @@ specification:
         validations:
           - type: required
             value: ""
+      - name: parentID
+        description: ""
+        type: string
+        default: "0"
+        validations: []
       - name: sdk.batch.delay
         description: Maximum delay before an incomplete batch is read from the source.
         type: duration
@@ -83,13 +81,6 @@ specification:
             value: avro
   destination:
     parameters:
-      - name: parentID
-        description: ""
-        type: string
-        default: ""
-        validations:
-          - type: required
-            value: ""
       - name: token
         description: ""
         type: string
@@ -97,6 +88,11 @@ specification:
         validations:
           - type: required
             value: ""
+      - name: parentID
+        description: ""
+        type: string
+        default: "0"
+        validations: []
       - name: sdk.batch.delay
         description: Maximum delay before an incomplete batch is written to the destination.
         type: duration

@@ -186,6 +186,34 @@ func (c *HTTPClient) Delete(ctx context.Context, fileID string) error {
 	return nil
 }
 
+func (c *HTTPClient) ListFolderItems(ctx context.Context, folderID, marker string, limit int) ([]Entry, string, bool, error) {
+	url := fmt.Sprintf("%s/2.0/folders/%s/items?fields=parent,file_version,name,sequence_id,sha1,modified_at,size,extension&usemarker=true", BaseURL, folderID)
+	if marker != "" {
+		url = fmt.Sprintf("%s&marker=%s", url, marker)
+	}
+	if limit > 0 {
+		url = fmt.Sprintf("%s&limit=%d", url, limit)
+	}
+
+	resp, err := c.makeRequest(ctx, http.MethodGet, url, nil, nil)
+	if err != nil {
+		return nil, "", false, err
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Entries    []Entry `json:"entries"`
+		NextMarker string  `json:"next_marker"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, "", false, fmt.Errorf("decode response failed: %w", err)
+	}
+
+	hasMore := result.NextMarker != ""
+	return result.Entries, result.NextMarker, hasMore, nil
+}
+
 func (c *HTTPClient) makeRequest(ctx context.Context, method, url string, headers map[string]string, reqBody io.Reader) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, method, url, reqBody)
 	if err != nil {

@@ -25,6 +25,7 @@ import (
 	"github.com/conduitio/conduit-commons/opencdc"
 )
 
+// uploadFile uploads a new or existing file to the remote box directory.
 func (d *Destination) uploadFile(ctx context.Context, r opencdc.Record) error {
 	filename, ok := r.Metadata[opencdc.MetadataFileName]
 	if !ok {
@@ -39,7 +40,16 @@ func (d *Destination) uploadFile(ctx context.Context, r opencdc.Record) error {
 		return NewInvalidFileError("invalid file size" + err.Error())
 	}
 
-	response, err := d.client.Upload(ctx, filename, d.config.ParentID, r.Metadata["box.file_id"], r.Payload.After.Bytes())
+	var fileID string
+	if r.Operation == opencdc.OperationUpdate {
+		var err error
+		fileID, err = d.getFileIDByFilename(ctx, filename)
+		if err != nil {
+			return err
+		}
+	}
+
+	response, err := d.client.Upload(ctx, filename, d.config.ParentID, fileID, r.Payload.After.Bytes())
 	if err != nil {
 		return fmt.Errorf("error uploading file: %w", err)
 	}
@@ -51,47 +61,65 @@ func (d *Destination) uploadFile(ctx context.Context, r opencdc.Record) error {
 	return nil
 }
 
+// handleFileChunk handles the chunked record to upload to remote box directory.
 func (d *Destination) handleFileChunk(ctx context.Context, r opencdc.Record) error {
 	metaData, err := d.extractMetadata(r)
 	if err != nil {
 		return err
 	}
 
-	switch {
-	case metaData.filesize < int64(minChunkUploadSize):
-		return d.cachedUpload(ctx, r)
-
-	case metaData.filesize >= int64(minChunkUploadSize):
-		sess, ok := d.sessions[metaData.hash]
-		if !ok && metaData.index == 1 {
-			err := d.createSession(ctx, metaData)
-			if err != nil {
-				return err
-			}
-			sess = d.sessions[metaData.hash]
-		}
-
-		if sess.partSize <= maxRecordSize {
-			err = d.processPart(ctx, metaData)
-			if err != nil {
-				return err
-			}
-
-			if metaData.index == metaData.totalChunks {
-				_, err := d.client.CommitUpload(ctx, sess.sessionID, metaData.hash, sess.parts)
-				if err != nil {
-					return fmt.Errorf("error committing chunk upload: %w", err)
-				}
-
-				delete(d.sessions, metaData.hash)
-				delete(d.files, metaData.hash)
-			}
-
-			return nil
-		}
-
-		err := d.uploadLargeParts(ctx, metaData, r.Payload.After.Bytes())
+	if r.Operation == opencdc.OperationUpdate {
+		metaData.fileID, err = d.getFileIDByFilename(ctx, metaData.filename)
 		if err != nil {
+			return err
+		}
+	}
+
+	if metaData.filesize < int64(minChunkUploadSize) {
+		return d.cachedUpload(ctx, metaData, r.Payload.After.Bytes())
+	}
+
+	return d.handleChunkUpload(ctx, metaData, r)
+}
+
+func (d *Destination) handleChunkUpload(ctx context.Context, metaData metadata, r opencdc.Record) error {
+	sess, ok := d.sessions[metaData.hash]
+	if !ok && metaData.index == 1 {
+		if err := d.createSession(ctx, metaData); err != nil {
+			return err
+		}
+		sess = d.sessions[metaData.hash]
+	}
+
+	switch sess.partSize {
+	case maxRecordSize:
+		return d.uploadStandardChunk(ctx, metaData, r.Payload.After.Bytes(), sess)
+	default:
+		return d.uploadParts(ctx, metaData, r.Payload.After.Bytes())
+	}
+}
+
+func (d *Destination) uploadStandardChunk(ctx context.Context, metaData metadata, chunk []byte, sess session) error {
+	shaSum := sha1.Sum(chunk) //nolint:gosec // box expects sha1 hash in api headers.
+	shaB64 := base64.StdEncoding.EncodeToString(shaSum[:])
+	start := sess.partsProcessed * sess.partSize
+	end := start + sess.partSize - 1
+	contentRange := fmt.Sprintf("bytes %d-%d/%d", start, end, metaData.filesize)
+
+	resp, err := d.client.UploadChunk(ctx, d.files[metaData.hash], sess.sessionID, shaB64, contentRange)
+	if err != nil {
+		return fmt.Errorf("error uploading chunk: %w", err)
+	}
+
+	sess.partsProcessed++
+	sess.parts = append(sess.parts, resp.Part)
+
+	if _, err := sess.hasher.Write(d.files[metaData.hash]); err != nil {
+		return fmt.Errorf("error hasher write: %w", err)
+	}
+
+	if metaData.index == metaData.totalChunks {
+		if err := d.finalizeUpload(ctx, metaData.hash, sess); err != nil {
 			return err
 		}
 	}
@@ -99,6 +127,16 @@ func (d *Destination) handleFileChunk(ctx context.Context, r opencdc.Record) err
 	return nil
 }
 
+func (d *Destination) finalizeUpload(ctx context.Context, hash string, sess session) error {
+	if _, err := d.client.CommitUpload(ctx, sess.sessionID, hash, sess.parts); err != nil {
+		return fmt.Errorf("error committing chunk upload: %w", err)
+	}
+	delete(d.sessions, hash)
+	delete(d.files, hash)
+	return nil
+}
+
+// createSession creates a new box session for chunk upload.
 func (d *Destination) createSession(ctx context.Context, metaData metadata) error {
 	sessionResponse, err := d.client.Session(ctx, metaData.filename, d.config.ParentID, metaData.fileID, metaData.filesize)
 	if err != nil {
@@ -116,7 +154,10 @@ func (d *Destination) createSession(ctx context.Context, metaData metadata) erro
 	return nil
 }
 
-func (d *Destination) uploadLargeParts(ctx context.Context, metaData metadata, content []byte) error {
+// uploadLargeParts uploads the chunked record to remote box directory. It caches the record content in memory
+// and keeps on updating the cache by appending the new record bytes. Once the cache size equals the chunk part size
+// it uploads the cached data and clears the cache for next records.
+func (d *Destination) uploadParts(ctx context.Context, metaData metadata, content []byte) error {
 	contentLength := len(content) + len(d.files[metaData.hash])
 	switch {
 	case metaData.index == 1:
@@ -163,6 +204,8 @@ func (d *Destination) uploadLargeParts(ctx context.Context, metaData metadata, c
 	return nil
 }
 
+// processPart process the chunk record by preparing the chunk upload request
+// and updating the file session after a successful upload.
 func (d *Destination) processPart(ctx context.Context, metaData metadata) error {
 	shaSum := sha1.Sum(d.files[metaData.hash]) //nolint:gosec // box expects sha1 hash in api headers.
 	shaB64 := base64.StdEncoding.EncodeToString(shaSum[:])
@@ -196,12 +239,7 @@ func (d *Destination) processPart(ctx context.Context, metaData metadata) error 
 
 // cachedUpload is used to upload the files that are of 4MB > size < 20MB.
 // It caches the chunked record in memory and uploads the file when the last chunk is appended.
-func (d *Destination) cachedUpload(ctx context.Context, r opencdc.Record) error {
-	metaData, err := d.extractMetadata(r)
-	if err != nil {
-		return err
-	}
-
+func (d *Destination) cachedUpload(ctx context.Context, metaData metadata, content []byte) error {
 	if metaData.index != 1 {
 		_, ok := d.files[metaData.hash]
 		if !ok {
@@ -209,7 +247,7 @@ func (d *Destination) cachedUpload(ctx context.Context, r opencdc.Record) error 
 		}
 	}
 
-	d.files[metaData.hash] = append(d.files[metaData.hash], r.Payload.After.Bytes()...)
+	d.files[metaData.hash] = append(d.files[metaData.hash], content...)
 
 	if metaData.index == metaData.totalChunks {
 		response, err := d.client.Upload(ctx, metaData.filename, d.config.ParentID, metaData.fileID, d.files[metaData.hash])
@@ -228,6 +266,27 @@ func (d *Destination) cachedUpload(ctx context.Context, r opencdc.Record) error 
 	return nil
 }
 
+func (d *Destination) getFileIDByFilename(ctx context.Context, filename string) (string, error) {
+	more := true
+	var nextMarker string
+
+	for more {
+		var err error
+		var items []box.Entry
+		items, nextMarker, more, err = d.client.ListFolderItems(ctx, d.config.ParentID, nextMarker, 1000)
+		if err != nil {
+			return "", fmt.Errorf("error listing folder items %w", err)
+		}
+		for _, item := range items {
+			if item.Name == filename {
+				return item.ID, nil
+			}
+		}
+	}
+
+	return "", ErrFileNotFound
+}
+
 type metadata struct {
 	filename    string
 	filesize    int64
@@ -237,6 +296,7 @@ type metadata struct {
 	fileID      string
 }
 
+// extractMetadata extracts the metadata fields from the record.
 func (d *Destination) extractMetadata(record opencdc.Record) (metadata, error) {
 	meta := metadata{}
 	var ok bool
@@ -267,7 +327,7 @@ func (d *Destination) extractMetadata(record opencdc.Record) (metadata, error) {
 	}
 	meta.filename, ok = record.Metadata[opencdc.MetadataFileName]
 	if !ok {
-		return metadata{}, NewInvalidChunkError("hash not found")
+		return metadata{}, NewInvalidChunkError("filename not found")
 	}
 	fileSize, ok := record.Metadata[opencdc.MetadataFileSize]
 	if !ok {
@@ -278,7 +338,6 @@ func (d *Destination) extractMetadata(record opencdc.Record) (metadata, error) {
 	if err != nil {
 		return metadata{}, fmt.Errorf("failed to parse file size: %w", err)
 	}
-	meta.fileID = record.Metadata["box.file_id"]
 
 	return meta, nil
 }
