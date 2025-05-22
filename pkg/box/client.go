@@ -28,6 +28,7 @@ import (
 var (
 	ErrEmptyAccessToken = errors.New("access token is required")
 	ErrBoxAPI           = errors.New("box API error")
+	ErrNotAFolder       = errors.New("path must point to a directory")
 	BaseURL             = "https://api.box.com"
 	UploadBaseURL       = "https://upload.box.com"
 )
@@ -48,11 +49,28 @@ func NewHTTPClient(accessToken string) (*HTTPClient, error) {
 	}, nil
 }
 
-func (c *HTTPClient) Download(_ context.Context) ([]byte, error) {
-	return nil, nil
+func (c *HTTPClient) Download(ctx context.Context, fileID string, rangeHeader string) (io.ReadCloser, error) {
+	url := fmt.Sprintf("%s/2.0/files/%s/content", BaseURL, fileID)
+
+	headers := make(map[string]string)
+	if rangeHeader != "" {
+		headers["Range"] = rangeHeader
+	}
+
+	resp, err := c.makeRequest(ctx, http.MethodGet, url, headers, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
+		defer resp.Body.Close()
+		return nil, parseError(resp)
+	}
+
+	return resp.Body, nil
 }
 
-func (c *HTTPClient) Upload(ctx context.Context, filename, parentID, fileID string, content []byte) (*UploadResponse, error) {
+func (c *HTTPClient) Upload(ctx context.Context, filename string, parentID int, fileID string, content []byte) (*UploadResponse, error) {
 	url := fmt.Sprintf("%s/api/2.0/files/content", UploadBaseURL)
 	if fileID != "" {
 		url = fmt.Sprintf("%s/api/2.0/files/%s/content", UploadBaseURL, fileID)
@@ -60,7 +78,7 @@ func (c *HTTPClient) Upload(ctx context.Context, filename, parentID, fileID stri
 
 	var requestBody bytes.Buffer
 	writer := multipart.NewWriter(&requestBody)
-	attributes := fmt.Sprintf(`{"name":"%s", "parent":{"id":"%s"}}`, filename, parentID)
+	attributes := fmt.Sprintf(`{"name":"%s", "parent":{"id":"%d"}}`, filename, parentID)
 	err := writer.WriteField("attributes", attributes)
 	if err != nil {
 		return nil, fmt.Errorf("error multipart write field: %w", err)
@@ -94,7 +112,7 @@ func (c *HTTPClient) Upload(ctx context.Context, filename, parentID, fileID stri
 	return response, nil
 }
 
-func (c *HTTPClient) Session(ctx context.Context, filename, parentID, fileID string, filesize int64) (*SessionResponse, error) {
+func (c *HTTPClient) Session(ctx context.Context, filename string, parentID int, fileID string, filesize int64) (*SessionResponse, error) {
 	request := SessionRequest{}
 	var url string
 
@@ -175,19 +193,8 @@ func (c *HTTPClient) CommitUpload(ctx context.Context, sessionID, digest string,
 	return response, nil
 }
 
-func (c *HTTPClient) Delete(ctx context.Context, fileID string) error {
-	url := fmt.Sprintf("%s/api/2.0/files/%s", BaseURL, fileID)
-	headers := map[string]string{"Content-Type": "application/json"}
-	resp, err := c.makeRequest(ctx, http.MethodDelete, url, headers, nil)
-	if err != nil {
-		return err
-	}
-	resp.Body.Close()
-	return nil
-}
-
-func (c *HTTPClient) ListFolderItems(ctx context.Context, folderID, marker string, limit int) ([]Entry, string, bool, error) {
-	url := fmt.Sprintf("%s/2.0/folders/%s/items?fields=parent,file_version,name,sequence_id,sha1,modified_at,size,extension&usemarker=true", BaseURL, folderID)
+func (c *HTTPClient) ListFolderItems(ctx context.Context, folderID int, marker string, limit int) ([]Entry, string, bool, error) {
+	url := fmt.Sprintf("%s/2.0/folders/%d/items?fields=parent,file_version,name,sequence_id,sha1,modified_at,size,extension&usemarker=true", BaseURL, folderID)
 	if marker != "" {
 		url = fmt.Sprintf("%s&marker=%s", url, marker)
 	}
@@ -212,6 +219,67 @@ func (c *HTTPClient) ListFolderItems(ctx context.Context, folderID, marker strin
 
 	hasMore := result.NextMarker != ""
 	return result.Entries, result.NextMarker, hasMore, nil
+}
+
+func (c *HTTPClient) VerifyFolder(ctx context.Context, id int) (bool, error) {
+	url := fmt.Sprintf("%s/2.0/folders/%d", BaseURL, id)
+
+	resp, err := c.makeRequest(ctx, http.MethodGet, url, nil, nil)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Type string `json:"type"`
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return false, fmt.Errorf("decode response failed: %w", err)
+	}
+
+	if result.Type != "folder" {
+		return false, ErrNotAFolder
+	}
+
+	return true, nil
+}
+
+func (c *HTTPClient) GetEvents(ctx context.Context, streamPosition int) ([]Event, int, error) {
+	url := fmt.Sprintf("%s/2.0/events?stream_type=changes", BaseURL)
+
+	if streamPosition != 0 {
+		url = fmt.Sprintf("%s&stream_position=%d", url, streamPosition)
+	}
+
+	resp, err := c.makeRequest(ctx, http.MethodGet, url, nil, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Entries            []Event `json:"entries"`
+		NextStreamPosition int     `json:"next_stream_position"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, 0, fmt.Errorf("decode response failed: %w", err)
+	}
+
+	return result.Entries, result.NextStreamPosition, nil
+}
+
+func (c *HTTPClient) Delete(ctx context.Context, fileID string) error {
+	url := fmt.Sprintf("%s/api/2.0/files/%s", BaseURL, fileID)
+	headers := map[string]string{"Content-Type": "application/json"}
+	resp, err := c.makeRequest(ctx, http.MethodDelete, url, headers, nil)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
 }
 
 func (c *HTTPClient) makeRequest(ctx context.Context, method, url string, headers map[string]string, reqBody io.Reader) (*http.Response, error) {
@@ -267,77 +335,4 @@ func parseError(resp *http.Response) error {
 	}
 
 	return fmt.Errorf("%w (status %d): %s", ErrBoxAPI, resp.StatusCode, string(body))
-}
-
-type UploadResponse struct {
-	TotalCount int `json:"total_count"`
-	Entries    []struct {
-		Type        string `json:"type"`
-		ID          string `json:"id"`
-		FileVersion struct {
-			Type string `json:"type"`
-			ID   string `json:"id"`
-			Sha1 string `json:"sha1"`
-		} `json:"file_version"`
-		SequenceID string `json:"sequence_id"`
-		Name       string `json:"name"`
-		Size       int64  `json:"size"`
-		CreatedAt  string `json:"created_at"`
-		ModifiedAt string `json:"modified_at"`
-	} `json:"entries"`
-}
-
-type SessionRequest struct {
-	FolderID string `json:"folder_id,omitempty"`
-	FileName string `json:"file_name,omitempty"`
-	FileSize int64  `json:"file_size"`
-}
-
-type SessionResponse struct {
-	ID                string `json:"id"`
-	Type              string `json:"type"`
-	NumPartsProcessed int    `json:"num_parts_processed"`
-	PartSize          int    `json:"part_size"`
-	SessionExpiresAt  string `json:"session_expires_at"`
-	TotalParts        int    `json:"total_parts"`
-}
-
-type UploadChunkResponse struct {
-	Part Part `json:"part"`
-}
-
-type CommitUploadRequest struct {
-	Parts []Part `json:"parts"`
-}
-
-type Part struct {
-	PartID string `json:"part_id"`
-	Offset int    `json:"offset"`
-	Size   int    `json:"size"`
-	Sha1   string `json:"sha1"`
-}
-
-type CommitUploadResponse struct {
-	Entries    []Entry `json:"entries"`
-	TotalCount int     `json:"total_count"`
-}
-
-type Entry struct {
-	Etag        string `json:"etag"`
-	ID          string `json:"id"`
-	Type        string `json:"type"`
-	FileVersion struct {
-		ID   string `json:"id"`
-		Type string `json:"type"`
-		Sha1 string `json:"sha1"`
-	} `json:"file_version"`
-	Name              string `json:"name"`
-	SequenceID        string `json:"sequence_id"`
-	Sha1              string `json:"sha1"`
-	ContentCreatedAt  string `json:"content_created_at"`
-	ContentModifiedAt string `json:"content_modified_at"`
-	CreatedAt         string `json:"created_at"`
-	ModifiedAt        string `json:"modified_at"`
-	Size              int    `json:"size"`
-	Extension         string `json:"extension"`
 }
