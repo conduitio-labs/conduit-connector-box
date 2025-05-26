@@ -141,6 +141,10 @@ func (w *Worker) cdc(ctx context.Context) error {
 	w.streamPosition = nextPosition
 
 	for _, event := range events {
+		if w.shouldSkipEvent(event) {
+			continue
+		}
+
 		switch event.Type {
 		case itemCreate, itemUpload, itemModify, itemRename:
 			if err := w.processFile(ctx, event.Source); err != nil {
@@ -157,10 +161,6 @@ func (w *Worker) cdc(ctx context.Context) error {
 }
 
 func (w *Worker) processFile(ctx context.Context, entry box.Entry) error {
-	if w.shouldSkipEntry(entry) {
-		return nil
-	}
-
 	if entry.Size > w.config.FileChunkSizeBytes {
 		return w.processChunkedFile(ctx, entry)
 	}
@@ -330,10 +330,10 @@ func (w *Worker) createRecord(entry box.Entry, data []byte) (opencdc.Record, err
 	), nil
 }
 
-func (w *Worker) shouldSkipEntry(entry box.Entry) bool {
-	if entry.Type != typeFile ||
-		entry.Parent.ID != fmt.Sprintf("%d", w.config.ParentID) ||
-		entry.ModifiedAt.UnixNano() < w.lastProcessedTime {
+func (w *Worker) shouldSkipEvent(event box.Event) bool {
+	if event.Source.Type != typeFile ||
+		event.CreatedAt.UnixNano() < w.lastProcessedTime ||
+		event.Source.Parent.ID != fmt.Sprintf("%d", w.config.ParentID) {
 		return true
 	}
 
