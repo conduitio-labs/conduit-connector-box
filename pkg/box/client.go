@@ -215,7 +215,9 @@ func (c *HTTPClient) ListFolderItems(ctx context.Context, folderID, marker strin
 }
 
 func (c *HTTPClient) Close() {
-	c.httpClient.CloseIdleConnections()
+	if c.httpClient != nil {
+		c.httpClient.CloseIdleConnections()
+	}
 }
 
 func (c *HTTPClient) makeRequest(ctx context.Context, method, url string, headers map[string]string, reqBody io.Reader) (*http.Response, error) {
