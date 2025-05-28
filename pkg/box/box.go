@@ -46,4 +46,7 @@ type Box interface {
 	// ListFolderItems returns the items (files/folders) within a Box folder.
 	// Docs: https://developer.box.com/reference/get-folders-id-items
 	ListFolderItems(ctx context.Context, folderID, marker string, limit int) ([]Entry, string, bool, error)
+
+	// Close closes the HTTPClient
+	Close()
 }

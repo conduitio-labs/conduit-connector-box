@@ -214,6 +214,10 @@ func (c *HTTPClient) ListFolderItems(ctx context.Context, folderID, marker strin
 	return result.Entries, result.NextMarker, hasMore, nil
 }
 
+func (c *HTTPClient) Close() {
+	c.httpClient.CloseIdleConnections()
+}
+
 func (c *HTTPClient) makeRequest(ctx context.Context, method, url string, headers map[string]string, reqBody io.Reader) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, method, url, reqBody)
 	if err != nil {
