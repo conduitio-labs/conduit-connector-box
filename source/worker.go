@@ -38,12 +38,11 @@ const (
 )
 
 type Worker struct {
-	client    box.Box
-	config    Config
-	recordsCh chan<- opencdc.Record
-	wg        *sync.WaitGroup
-
-	streamPosition    int
+	client            box.Box
+	config            Config
+	recordsCh         chan<- opencdc.Record
+	errorCh           chan<- error
+	wg                *sync.WaitGroup
 	currentChunkInfo  *ChunkInfo
 	lastProcessedTime int64
 }
@@ -53,21 +52,25 @@ func NewWorker(
 	config Config,
 	position *Position,
 	recordsCh chan<- opencdc.Record,
+	errorCh chan<- error,
 	wg *sync.WaitGroup,
 ) *Worker {
 	return &Worker{
 		client:            client,
 		config:            config,
 		recordsCh:         recordsCh,
+		errorCh:           errorCh,
 		wg:                wg,
-		streamPosition:    position.StreamPosition,
 		currentChunkInfo:  position.ChunkInfo,
 		lastProcessedTime: position.LastProcessedUnixTime,
 	}
 }
 
 func (w *Worker) Start(ctx context.Context) {
-	defer w.wg.Done()
+	defer func() {
+		close(w.recordsCh)
+		w.wg.Done()
+	}()
 	retries := w.config.Retries
 
 	for {
@@ -77,6 +80,7 @@ func (w *Worker) Start(ctx context.Context) {
 		if err != nil {
 			if retries == 0 {
 				sdk.Logger(ctx).Err(err).Msg("retries exhausted, worker shutting down...")
+				w.errorCh <- err
 				return
 			}
 			retries--
@@ -96,7 +100,7 @@ func (w *Worker) Start(ctx context.Context) {
 }
 
 func (w *Worker) process(ctx context.Context) error {
-	if w.streamPosition == 0 {
+	if w.lastProcessedTime == 0 {
 		return w.snapshot(ctx)
 	}
 
@@ -106,20 +110,13 @@ func (w *Worker) process(ctx context.Context) error {
 func (w *Worker) snapshot(ctx context.Context) error {
 	marker := ""
 	for {
-		items, nextMarker, hasMore, err := w.client.ListFolderItems(ctx, w.config.ParentID, marker, *w.config.BatchSize)
+		entries, nextMarker, hasMore, err := w.client.ListFolderItems(ctx, w.config.ParentID, marker, *w.config.BatchSize)
 		if err != nil {
 			return fmt.Errorf("list folder items failed: %w", err)
 		}
 
-		// Get current stream position.
-		_, currentPosition, err := w.client.GetEvents(ctx, w.streamPosition)
-		if err != nil {
-			return fmt.Errorf("get latest events failed: %w", err)
-		}
-		w.streamPosition = currentPosition
-
-		for _, item := range items {
-			if err := w.processFile(ctx, item); err != nil {
+		for _, entry := range entries {
+			if err := w.processEntry(ctx, entry, false); err != nil {
 				return fmt.Errorf("process file failed: %w", err)
 			}
 		}
@@ -134,25 +131,38 @@ func (w *Worker) snapshot(ctx context.Context) error {
 }
 
 func (w *Worker) cdc(ctx context.Context) error {
-	events, nextPosition, err := w.client.GetEvents(ctx, w.streamPosition)
-	if err != nil {
-		return fmt.Errorf("get latest events failed: %w", err)
-	}
-	w.streamPosition = nextPosition
-
-	for _, event := range events {
-		if w.shouldSkipEvent(event) {
-			continue
+	marker := ""
+	for {
+		entries, nextMarker, hasMore, err := w.client.ListFolderItems(ctx, w.config.ParentID, marker, *w.config.BatchSize)
+		if err != nil {
+			return fmt.Errorf("list folder items failed: %w", err)
 		}
 
-		switch event.Type {
-		case itemCreate, itemUpload, itemModify, itemRename:
-			if err := w.processFile(ctx, event.Source); err != nil {
-				return fmt.Errorf("process file failed: %w", err)
+		err = w.processEntries(ctx, entries)
+		if err != nil {
+			return err
+		}
+
+		if !hasMore {
+			break
+		}
+		marker = nextMarker
+	}
+
+	return nil
+}
+
+func (w *Worker) processEntries(ctx context.Context, entries []box.Entry) error {
+	for _, entry := range entries {
+		if entry.CreatedAt.UnixNano() > w.lastProcessedTime {
+			if err := w.processEntry(ctx, entry, false); err != nil {
+				return fmt.Errorf("process new file failed: %w", err)
 			}
-		case itemTrash:
-			if err := w.processDeletedFile(ctx, event.Source); err != nil {
-				return fmt.Errorf("process deleted file failed: %w", err)
+		}
+
+		if entry.CreatedAt.UnixNano() <= w.lastProcessedTime && entry.ModifiedAt.UnixNano() > w.lastProcessedTime {
+			if err := w.processEntry(ctx, entry, true); err != nil {
+				return fmt.Errorf("process existing file failed: %w", err)
 			}
 		}
 	}
@@ -160,14 +170,18 @@ func (w *Worker) cdc(ctx context.Context) error {
 	return nil
 }
 
-func (w *Worker) processFile(ctx context.Context, entry box.Entry) error {
-	if entry.Size > w.config.FileChunkSizeBytes {
-		return w.processChunkedFile(ctx, entry)
+func (w *Worker) processEntry(ctx context.Context, entry box.Entry, existing bool) error {
+	if entry.Type != typeFile {
+		return nil
 	}
-	return w.processFullFile(ctx, entry)
+
+	if entry.Size > w.config.FileChunkSizeBytes {
+		return w.processChunkedFile(ctx, entry, existing)
+	}
+	return w.processFullFile(ctx, entry, existing)
 }
 
-func (w *Worker) processChunkedFile(ctx context.Context, entry box.Entry) error {
+func (w *Worker) processChunkedFile(ctx context.Context, entry box.Entry, existing bool) error {
 	totalChunks := (entry.Size + w.config.FileChunkSizeBytes - 1) / w.config.FileChunkSizeBytes
 
 	startChunk := 1
@@ -185,7 +199,7 @@ func (w *Worker) processChunkedFile(ctx context.Context, entry box.Entry) error 
 			return fmt.Errorf("download chunk %d failed: %w", chunkIdx, err)
 		}
 
-		record, err := w.createChunkedRecord(entry, chunkIdx, totalChunks, chunkData)
+		record, err := w.createChunkedRecord(entry, chunkIdx, totalChunks, chunkData, existing)
 		if err != nil {
 			return fmt.Errorf("create record failed: %w", err)
 		}
@@ -199,46 +213,16 @@ func (w *Worker) processChunkedFile(ctx context.Context, entry box.Entry) error 
 	return nil
 }
 
-func (w *Worker) processFullFile(ctx context.Context, entry box.Entry) error {
-	fmt.Println("processing file ----- ", entry.Name)
+func (w *Worker) processFullFile(ctx context.Context, entry box.Entry, existing bool) error {
 	fileData, err := w.downloadChunk(ctx, entry.ID, "")
 	if err != nil {
 		return fmt.Errorf("download failed: %w", err)
 	}
 
-	record, err := w.createRecord(entry, fileData)
+	record, err := w.createRecord(entry, fileData, existing)
 	if err != nil {
 		return fmt.Errorf("create record failed: %w", err)
 	}
-
-	select {
-	case w.recordsCh <- record:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
-func (w *Worker) processDeletedFile(ctx context.Context, entry box.Entry) error {
-	w.currentChunkInfo = nil
-	position, err := ToSDKPosition(w.streamPosition, nil, w.lastProcessedTime)
-	if err != nil {
-		return fmt.Errorf("marshal position: %w", err)
-	}
-
-	metadata := opencdc.Metadata{
-		opencdc.MetadataFileName:   entry.Name,
-		"file_id":                  entry.ID,
-		opencdc.MetadataFileHash:   entry.Sha1,
-		opencdc.MetadataCollection: entry.Parent.ID,
-	}
-
-	record := sdk.Util.Source.NewRecordDelete(
-		position,
-		metadata,
-		opencdc.StructuredData{"id": entry.ID, "hash": entry.Sha1},
-		nil,
-	)
 
 	select {
 	case w.recordsCh <- record:
@@ -263,7 +247,7 @@ func (w *Worker) downloadChunk(ctx context.Context, fileID string, rangeHeader s
 	return data, nil
 }
 
-func (w *Worker) createChunkedRecord(entry box.Entry, chunkIdx, totalChunks int, data []byte) (opencdc.Record, error) {
+func (w *Worker) createChunkedRecord(entry box.Entry, chunkIdx, totalChunks int, data []byte, existing bool) (opencdc.Record, error) {
 	var chunkInfo *ChunkInfo
 
 	if chunkIdx == totalChunks {
@@ -279,7 +263,7 @@ func (w *Worker) createChunkedRecord(entry box.Entry, chunkIdx, totalChunks int,
 		w.currentChunkInfo = chunkInfo
 	}
 
-	sdkPosition, err := ToSDKPosition(w.streamPosition, chunkInfo, w.lastProcessedTime)
+	sdkPosition, err := ToSDKPosition(w.lastProcessedTime, nil)
 	if err != nil {
 		return opencdc.Record{}, fmt.Errorf("marshal position: %w", err)
 	}
@@ -296,19 +280,31 @@ func (w *Worker) createChunkedRecord(entry box.Entry, chunkIdx, totalChunks int,
 		opencdc.MetadataFileChunked:    "true",
 	}
 
-	return sdk.Util.Source.NewRecordCreate(
+	record := sdk.Util.Source.NewRecordCreate(
 		sdkPosition,
 		metadata,
 		opencdc.StructuredData{"id": entry.ID, "hash": entry.Sha1},
 		opencdc.RawData(data),
-	), nil
+	)
+
+	if existing {
+		record = sdk.Util.Source.NewRecordUpdate(
+			sdkPosition,
+			metadata,
+			opencdc.StructuredData{"id": entry.ID, "hash": entry.Sha1},
+			nil,
+			opencdc.RawData(data),
+		)
+	}
+
+	return record, nil
 }
 
-func (w *Worker) createRecord(entry box.Entry, data []byte) (opencdc.Record, error) {
+func (w *Worker) createRecord(entry box.Entry, data []byte, existing bool) (opencdc.Record, error) {
 	w.currentChunkInfo = nil
 	w.lastProcessedTime = entry.ModifiedAt.UnixNano()
 
-	position, err := ToSDKPosition(w.streamPosition, nil, w.lastProcessedTime)
+	position, err := ToSDKPosition(w.lastProcessedTime, nil)
 	if err != nil {
 		return opencdc.Record{}, fmt.Errorf("marshal position: %w", err)
 	}
@@ -322,20 +318,22 @@ func (w *Worker) createRecord(entry box.Entry, data []byte) (opencdc.Record, err
 		opencdc.MetadataFileHash:   entry.Sha1,
 	}
 
-	return sdk.Util.Source.NewRecordCreate(
+	record := sdk.Util.Source.NewRecordCreate(
 		position,
 		metadata,
 		opencdc.StructuredData{"id": entry.ID, "hash": entry.Sha1},
 		opencdc.RawData(data),
-	), nil
-}
+	)
 
-func (w *Worker) shouldSkipEvent(event box.Event) bool {
-	if event.Source.Type != typeFile ||
-		event.CreatedAt.UnixNano() < w.lastProcessedTime ||
-		event.Source.Parent.ID != fmt.Sprintf("%d", w.config.ParentID) {
-		return true
+	if existing {
+		record = sdk.Util.Source.NewRecordUpdate(
+			position,
+			metadata,
+			opencdc.StructuredData{"id": entry.ID, "hash": entry.Sha1},
+			nil,
+			opencdc.RawData(data),
+		)
 	}
 
-	return false
+	return record, nil
 }

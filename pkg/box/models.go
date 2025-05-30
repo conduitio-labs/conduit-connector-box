@@ -95,6 +95,7 @@ type Entry struct {
 	Name       string    `json:"name"`
 	SequenceID string    `json:"sequence_id"`
 	Sha1       string    `json:"sha1"`
+	CreatedAt  time.Time `json:"created_at"`
 	ModifiedAt time.Time `json:"modified_at"`
 	Size       int       `json:"size"`
 	Extension  string    `json:"extension"`

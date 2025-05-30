@@ -194,7 +194,7 @@ func (c *HTTPClient) CommitUpload(ctx context.Context, sessionID, digest string,
 }
 
 func (c *HTTPClient) ListFolderItems(ctx context.Context, folderID int, marker string, limit int) ([]Entry, string, bool, error) {
-	url := fmt.Sprintf("%s/2.0/folders/%d/items?fields=parent,file_version,name,sequence_id,sha1,modified_at,size,extension&usemarker=true", BaseURL, folderID)
+	url := fmt.Sprintf("%s/2.0/folders/%d/items?fields=parent,file_version,name,sequence_id,sha1,created_at,modified_at,size,extension&usemarker=true&sort=date", BaseURL, folderID)
 	if marker != "" {
 		url = fmt.Sprintf("%s&marker=%s", url, marker)
 	}
@@ -272,7 +272,7 @@ func (c *HTTPClient) GetEvents(ctx context.Context, streamPosition int) ([]Event
 }
 
 func (c *HTTPClient) Delete(ctx context.Context, fileID string) error {
-	url := fmt.Sprintf("%s/api/2.0/files/%s", BaseURL, fileID)
+	url := fmt.Sprintf("%s/2.0/files/%s", BaseURL, fileID)
 	headers := map[string]string{"Content-Type": "application/json"}
 	resp, err := c.makeRequest(ctx, http.MethodDelete, url, headers, nil)
 	if err != nil {

@@ -29,7 +29,6 @@ type ChunkInfo struct {
 }
 
 type Position struct {
-	StreamPosition        int        `json:"stream_position"`
 	ChunkInfo             *ChunkInfo `json:"chunk_info"`
 	LastProcessedUnixTime int64      `json:"last_processed_unix_time"`
 }
@@ -50,9 +49,8 @@ func ParseSDKPosition(position opencdc.Position) (*Position, error) {
 	return &pos, nil
 }
 
-func ToSDKPosition(streamPosition int, chunkInfo *ChunkInfo, lastProcessed int64) (opencdc.Position, error) {
+func ToSDKPosition(lastProcessed int64, chunkInfo *ChunkInfo) (opencdc.Position, error) {
 	p := &Position{
-		StreamPosition:        streamPosition,
 		ChunkInfo:             chunkInfo,
 		LastProcessedUnixTime: lastProcessed,
 	}
