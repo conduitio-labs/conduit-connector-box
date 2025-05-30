@@ -3,7 +3,30 @@
 [Conduit](https://conduit.io) connector for <!-- readmegen:name -->Box<!-- /readmegen:name -->.
 
 <!-- readmegen:description -->
-Conduit connector for the box content management system.<!-- /readmegen:description -->
+## API Reference
+
+* https://developer.box.com/reference
+
+## Destination
+
+The Box Destination takes a Conduit record and uploads it to the remote box directory.
+
+### Create, Update and Snapshot Operations
+
+The box destination connector uploads the records in 3 different ways.
+
+* For a file which is <= 4MB the uploads the single record file by simple box upload endpoint.
+* For a file which is >= 4MB and <= 20MB, it keeps the file records in memory and once the last
+  record is appended it uploads it using the simple box upload endpoint.
+* For a file which is > 20MB, it uploads the file using chunk upload endpoint. It first creates
+  a new session for chunk upload which gives session id and part size in response. Using this
+  session id and part size the records are then uploaded. It prepares the parts by keeping
+  them in memory and upload the parts one by one using chunk upload endpoint.
+
+### Delete Operation
+
+Box destination connector delete a record using MetadataFileName.
+<!-- /readmegen:description -->
 
 ## Source
 
@@ -22,15 +45,15 @@ pipelines:
       - id: example
         plugin: "box"
         settings:
-          # GlobalConfigParam is named global_config_param_name and needs to be
-          # provided by the user.
+          # Token is used to authenticate API access.
           # Type: string
           # Required: yes
-          global_config_param_name: ""
-          # SourceConfigParam must be provided by the user.
+          token: ""
+          # ID of the Box directory to read/write files. Default is 0 for root
+          # directory.
           # Type: string
-          # Required: yes
-          sourceConfigParam: ""
+          # Required: no
+          parentID: "0"
           # Maximum delay before an incomplete batch is read from the source.
           # Type: duration
           # Required: no
@@ -95,15 +118,15 @@ pipelines:
       - id: example
         plugin: "box"
         settings:
-          # GlobalConfigParam is named global_config_param_name and needs to be
-          # provided by the user.
+          # Token is used to authenticate API access.
           # Type: string
           # Required: yes
-          global_config_param_name: ""
-          # DestinationConfigParam must be either yes or no (defaults to yes).
+          token: ""
+          # ID of the Box directory to read/write files. Default is 0 for root
+          # directory.
           # Type: string
           # Required: no
-          destinationConfigParam: "yes"
+          parentID: "0"
           # Maximum delay before an incomplete batch is written to the
           # destination.
           # Type: duration

@@ -12,25 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:generate conn-sdk-cli specgen
+package config
 
-package box
-
-import (
-	_ "embed"
-
-	"github.com/conduitio-labs/conduit-connector-box/destination"
-	"github.com/conduitio-labs/conduit-connector-box/source"
-	sdk "github.com/conduitio/conduit-connector-sdk"
-)
-
-//go:embed connector.yaml
-var specs string
-
-var version = "(devel)"
-
-var Connector = sdk.Connector{
-	NewSpecification: sdk.YAMLSpecification(specs, version),
-	NewSource:        source.NewSource,
-	NewDestination:   destination.NewDestination,
+type Config struct {
+	// Token is used to authenticate API access.
+	Token string `json:"token" validate:"required"`
+	// ID of the Box directory to read/write files. Default is 0 for root directory.
+	ParentID string `json:"parentID"  default:"0"`
 }
