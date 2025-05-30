@@ -278,7 +278,6 @@ func (d *Destination) getFileIDByFilename(ctx context.Context, filename string) 
 			return "", fmt.Errorf("error listing folder items %w", err)
 		}
 		for _, item := range items {
-			fmt.Printf("got item name %s, our filename %s", item.Name, filename)
 			if item.Name == filename {
 				return item.ID, nil
 			}

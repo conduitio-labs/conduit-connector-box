@@ -7,6 +7,17 @@
 
 * https://developer.box.com/reference
 
+## Source
+
+The Box Source connector reads files from a configured Box directory and converts them into 
+`opencdc.Record` that can be processed by Conduit. Files larger than `fileChunkSizeBytes` 
+(maximum value 4MB) are split into smaller chunks, and each chunk is emitted as a separate record.
+
+### File Processing
+- Processes files of any size through automatic chunking
+- Configurable polling interval for checking updates
+- Retry mechanism for handling temporary failures
+
 ## Destination
 
 The Box Destination takes a Conduit record and uploads it to the remote box directory.
@@ -28,12 +39,7 @@ The box destination connector uploads the records in 3 different ways.
 Box destination connector delete a record using MetadataFileName.
 <!-- /readmegen:description -->
 
-## Source
-
-A source connector pulls data from an external resource and pushes it to
-downstream resources via Conduit.
-
-### Configuration
+## Source Configuration Parameters
 
 <!-- readmegen:source.parameters.yaml -->
 ```yaml
@@ -52,7 +58,7 @@ pipelines:
           # Size of a file chunk in bytes to split large files, maximum is 4MB.
           # Type: int
           # Required: no
-          fileChunkSizeBytes: "3145728"
+          fileChunkSizeBytes: "3932160"
           # ID of the Box directory to read/write files. Default is 0 for root
           # directory.
           # Type: int
@@ -118,12 +124,7 @@ pipelines:
 ```
 <!-- /readmegen:source.parameters.yaml -->
 
-## Destination
-
-A destination connector pushes data from upstream resources to an external
-resource via Conduit.
-
-### Configuration
+## Destination Configuration Parameters
 
 <!-- readmegen:destination.parameters.yaml -->
 ```yaml
@@ -204,9 +205,6 @@ Run `make build` to build the connector.
 Run `make test` to run all the unit tests. Run `make test-integration` to run
 the integration tests.
 
-The Docker compose file at `test/docker-compose.yml` can be used to run the
-required resource locally.
-
 ## How to release?
 
 The release is done in two steps:
@@ -221,10 +219,4 @@ The release is done in two steps:
 
 ## Known Issues & Limitations
 
-- Known issue A
-- Limitation A
-
-## Planned work
-
-- [ ] Item A
-- [ ] Item B
+- Does not support syncing files which are renamed in source folder

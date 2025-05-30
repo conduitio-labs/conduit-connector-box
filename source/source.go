@@ -51,7 +51,7 @@ type Config struct {
 	// This period is used by worker to poll for new data at regular intervals.
 	PollingInterval time.Duration `json:"pollingInterval" default:"5s"`
 	// Size of a file chunk in bytes to split large files, maximum is 4MB.
-	FileChunkSizeBytes int `json:"fileChunkSizeBytes" default:"3145728"`
+	FileChunkSizeBytes int `json:"fileChunkSizeBytes" default:"3932160"`
 	// Maximum number of retry attempts.
 	Retries int `json:"retries" default:"0"`
 	// Delay between retry attempts.
