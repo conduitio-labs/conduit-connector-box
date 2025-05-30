@@ -38,7 +38,7 @@ type UploadResponse struct {
 
 // SessionRequest represents the payload to initiate a new chunked upload session.
 type SessionRequest struct {
-	FolderID int    `json:"folder_id,omitempty"`
+	FolderID string `json:"folder_id,omitempty"`
 	FileName string `json:"file_name,omitempty"`
 	FileSize int64  `json:"file_size"`
 }

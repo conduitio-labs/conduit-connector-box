@@ -120,7 +120,7 @@ func (c *HTTPClient) Session(ctx context.Context, filename string, parentID int,
 		request.FileSize = filesize
 		url = fmt.Sprintf("%s/api/2.0/files/%s/upload_sessions", UploadBaseURL, fileID)
 	} else {
-		request.FolderID = parentID
+		request.FolderID = fmt.Sprintf("%d", parentID)
 		request.FileName = filename
 		request.FileSize = filesize
 		url = fmt.Sprintf("%s/api/2.0/files/upload_sessions", UploadBaseURL)

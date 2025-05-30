@@ -9,8 +9,8 @@
 
 ## Source
 
-The Box Source connector reads files from a configured Box directory and converts them into 
-`opencdc.Record` that can be processed by Conduit. Files larger than `fileChunkSizeBytes` 
+The Box Source connector reads files from a configured Box directory and converts them into
+`opencdc.Record` that can be processed by Conduit. Files larger than `fileChunkSizeBytes`
 (maximum value 4MB) are split into smaller chunks, and each chunk is emitted as a separate record.
 
 ### File Processing
@@ -28,11 +28,11 @@ The box destination connector uploads the records in 3 different ways.
 
 * For a file which is <= 4MB the uploads the single record file by simple box upload endpoint.
 * For a file which is >= 4MB and <= 20MB, it keeps the file records in memory and once the last
-  record is appended it uploads it using the simple box upload endpoint.
+record is appended it uploads it using the simple box upload endpoint.
 * For a file which is > 20MB, it uploads the file using chunk upload endpoint. It first creates
-  a new session for chunk upload which gives session id and part size in response. Using this
-  session id and part size the records are then uploaded. It prepares the parts by keeping
-  them in memory and upload the parts one by one using chunk upload endpoint.
+a new session for chunk upload which gives session id and part size in response. Using this
+session id and part size the records are then uploaded. It prepares the parts by keeping
+them in memory and upload the parts one by one using chunk upload endpoint.
 
 ### Delete Operation
 
