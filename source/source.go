@@ -172,6 +172,9 @@ func (s *Source) Ack(ctx context.Context, position opencdc.Position) error {
 
 func (s *Source) Teardown(ctx context.Context) error {
 	sdk.Logger(ctx).Info().Msg("Tearing down Box source")
+	if s.client != nil {
+		s.client.Close()
+	}
 	if s.workersWg != nil {
 		s.workersWg.Wait()
 	}

@@ -53,7 +53,6 @@ type Box interface {
 	// Docs: https://developer.box.com/reference/get-folders-id
 	VerifyFolder(ctx context.Context, id int) (bool, error)
 
-	// GetEvents returns a list of events (such as file updates) starting from a given stream position.
-	// Docs: https://developer.box.com/reference/get-events
-	GetEvents(ctx context.Context, streamPosition int) ([]Event, int, error)
+	// Close closes the HTTPClient
+	Close()
 }

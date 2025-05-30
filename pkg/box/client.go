@@ -246,31 +246,6 @@ func (c *HTTPClient) VerifyFolder(ctx context.Context, id int) (bool, error) {
 	return true, nil
 }
 
-func (c *HTTPClient) GetEvents(ctx context.Context, streamPosition int) ([]Event, int, error) {
-	url := fmt.Sprintf("%s/2.0/events?stream_type=changes", BaseURL)
-
-	if streamPosition != 0 {
-		url = fmt.Sprintf("%s&stream_position=%d", url, streamPosition)
-	}
-
-	resp, err := c.makeRequest(ctx, http.MethodGet, url, nil, nil)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer resp.Body.Close()
-
-	var result struct {
-		Entries            []Event `json:"entries"`
-		NextStreamPosition int     `json:"next_stream_position"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, 0, fmt.Errorf("decode response failed: %w", err)
-	}
-
-	return result.Entries, result.NextStreamPosition, nil
-}
-
 func (c *HTTPClient) Delete(ctx context.Context, fileID string) error {
 	url := fmt.Sprintf("%s/2.0/files/%s", BaseURL, fileID)
 	headers := map[string]string{"Content-Type": "application/json"}
@@ -280,6 +255,12 @@ func (c *HTTPClient) Delete(ctx context.Context, fileID string) error {
 	}
 	resp.Body.Close()
 	return nil
+}
+
+func (c *HTTPClient) Close() {
+	if c.httpClient != nil {
+		c.httpClient.CloseIdleConnections()
+	}
 }
 
 func (c *HTTPClient) makeRequest(ctx context.Context, method, url string, headers map[string]string, reqBody io.Reader) (*http.Response, error) {

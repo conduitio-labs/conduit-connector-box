@@ -2,7 +2,30 @@ version: "1.0"
 specification:
   name: box
   summary: Conduit connector for the box content management system.
-  description: "## Source\n\n## Destination\n\nThe Box Destination takes a Conduit record and uploads it to the remote box directory.\n\n### Create, Update and Snapshot Operations\n\nThe box destination connector uploads the records in 3 different ways. \n* For a file which is <= 4MB the uploads the single record file by simple box upload endpoint. \n* For a file which is >=4B and <= 20MB, it keeps the file records in memory and once the last\n  record is appended it uploads it using the simple box upload endpoint.\n* For a file which is > 20MB, it uploads the file using chunk upload endpoint. It first creates \n  a new session for chunk upload which gives session id and part size in response. Using this\n  session id and part size the records are then uploaded. It prepares the parts by keeping \n  them in memory and upload the parts one by one using chunk upload endpoint.\n"
+  description: |
+    ## API Reference
+
+    * https://developer.box.com/reference
+
+    ## Destination
+
+    The Box Destination takes a Conduit record and uploads it to the remote box directory.
+
+    ### Create, Update and Snapshot Operations
+
+    The box destination connector uploads the records in 3 different ways.
+
+    * For a file which is <= 4MB the uploads the single record file by simple box upload endpoint.
+    * For a file which is >= 4MB and <= 20MB, it keeps the file records in memory and once the last
+      record is appended it uploads it using the simple box upload endpoint.
+    * For a file which is > 20MB, it uploads the file using chunk upload endpoint. It first creates
+      a new session for chunk upload which gives session id and part size in response. Using this
+      session id and part size the records are then uploaded. It prepares the parts by keeping
+      them in memory and upload the parts one by one using chunk upload endpoint.
+
+    ### Delete Operation
+
+    Box destination connector delete a record using MetadataFileName.
   version: v0.0.1
   author: Your Name
   source:

@@ -43,12 +43,10 @@ func (d *Destination) uploadFile(ctx context.Context, r opencdc.Record) error {
 	var fileID string
 	if r.Operation == opencdc.OperationUpdate {
 		var err error
-		fmt.Println("getting id by filename ---- ", filename)
 		fileID, err = d.getFileIDByFilename(ctx, filename)
 		if err != nil {
 			return err
 		}
-		fmt.Println("got id ---- ", fileID)
 	}
 
 	response, err := d.client.Upload(ctx, filename, d.config.ParentID, fileID, r.Payload.After.Bytes())
