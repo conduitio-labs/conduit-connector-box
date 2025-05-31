@@ -7,6 +7,17 @@ specification:
 
     * https://developer.box.com/reference
 
+    ## Source
+
+    The Box Source connector reads files from a configured Box directory and converts them into
+    `opencdc.Record` that can be processed by Conduit. Files larger than `fileChunkSizeBytes`
+    (maximum value 4MB) are split into smaller chunks, and each chunk is emitted as a separate record.
+
+    ### File Processing
+    - Processes files of any size through automatic chunking
+    - Configurable polling interval for checking updates
+    - Retry mechanism for handling temporary failures
+
     ## Destination
 
     The Box Destination takes a Conduit record and uploads it to the remote box directory.
@@ -17,17 +28,17 @@ specification:
 
     * For a file which is <= 4MB the uploads the single record file by simple box upload endpoint.
     * For a file which is >= 4MB and <= 20MB, it keeps the file records in memory and once the last
-      record is appended it uploads it using the simple box upload endpoint.
+    record is appended it uploads it using the simple box upload endpoint.
     * For a file which is > 20MB, it uploads the file using chunk upload endpoint. It first creates
-      a new session for chunk upload which gives session id and part size in response. Using this
-      session id and part size the records are then uploaded. It prepares the parts by keeping
-      them in memory and upload the parts one by one using chunk upload endpoint.
+    a new session for chunk upload which gives session id and part size in response. Using this
+    session id and part size the records are then uploaded. It prepares the parts by keeping
+    them in memory and upload the parts one by one using chunk upload endpoint.
 
     ### Delete Operation
 
     Box destination connector delete a record using MetadataFileName.
   version: v0.0.1
-  author: Your Name
+  author: Meroxa, Inc.
   source:
     parameters:
       - name: token
@@ -37,10 +48,30 @@ specification:
         validations:
           - type: required
             value: ""
+      - name: fileChunkSizeBytes
+        description: Size of a file chunk in bytes to split large files, maximum is 4MB.
+        type: int
+        default: "3932160"
+        validations: []
       - name: parentID
         description: ID of the Box directory to read/write files. Default is 0 for root directory.
-        type: string
+        type: int
         default: "0"
+        validations: []
+      - name: pollingInterval
+        description: This period is used by worker to poll for new data at regular intervals.
+        type: duration
+        default: 5s
+        validations: []
+      - name: retries
+        description: Maximum number of retry attempts.
+        type: int
+        default: "0"
+        validations: []
+      - name: retryDelay
+        description: Delay between retry attempts.
+        type: duration
+        default: 10s
         validations: []
       - name: sdk.batch.delay
         description: Maximum delay before an incomplete batch is read from the source.
@@ -85,7 +116,7 @@ specification:
       - name: sdk.schema.extract.payload.enabled
         description: Whether to extract and encode the record payload with a schema.
         type: bool
-        default: "true"
+        default: "false"
         validations: []
       - name: sdk.schema.extract.payload.subject
         description: |-
@@ -113,7 +144,7 @@ specification:
             value: ""
       - name: parentID
         description: ID of the Box directory to read/write files. Default is 0 for root directory.
-        type: string
+        type: int
         default: "0"
         validations: []
       - name: sdk.batch.delay
