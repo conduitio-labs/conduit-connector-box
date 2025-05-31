@@ -100,39 +100,6 @@ func (w *Worker) Start(ctx context.Context) {
 }
 
 func (w *Worker) process(ctx context.Context) error {
-	if w.lastProcessedTime == 0 {
-		return w.snapshot(ctx)
-	}
-
-	return w.cdc(ctx)
-}
-
-func (w *Worker) snapshot(ctx context.Context) error {
-	marker := ""
-	for {
-		// Box Events API lacks folder/date filters and has delayed updates.
-		// Using polling for now using ListFolderItems; monitor API updates for improvements.
-		entries, nextMarker, hasMore, err := w.client.ListFolderItems(ctx, w.config.ParentID, marker, *w.config.BatchSize)
-		if err != nil {
-			return fmt.Errorf("list folder items failed: %w", err)
-		}
-
-		for _, entry := range entries {
-			if err := w.processEntry(ctx, entry, false); err != nil {
-				return fmt.Errorf("process file failed: %w", err)
-			}
-		}
-
-		if !hasMore {
-			break
-		}
-		marker = nextMarker
-	}
-
-	return nil
-}
-
-func (w *Worker) cdc(ctx context.Context) error {
 	marker := ""
 	for {
 		// Box Events API lacks folder/date filters and has delayed updates.
