@@ -23,6 +23,8 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+
+	sdk "github.com/conduitio/conduit-connector-sdk"
 )
 
 var (
@@ -194,6 +196,11 @@ func (c *HTTPClient) CommitUpload(ctx context.Context, sessionID, digest string,
 }
 
 func (c *HTTPClient) ListFolderItems(ctx context.Context, folderID int, marker string, limit int) ([]Entry, string, bool, error) {
+	sdk.Logger(ctx).Debug().
+		Int("folder_id", folderID).
+		Int("limit", limit).
+		Msg("HTTPClient.ListFolderItems")
+
 	url := fmt.Sprintf("%s/2.0/folders/%d/items?fields=parent,file_version,name,sequence_id,sha1,created_at,modified_at,size,extension&usemarker=true&sort=date", BaseURL, folderID)
 	if marker != "" {
 		url = fmt.Sprintf("%s&marker=%s", url, marker)

@@ -23,6 +23,7 @@ import (
 
 	"github.com/conduitio-labs/conduit-connector-box/pkg/box"
 	"github.com/conduitio/conduit-commons/opencdc"
+	sdk "github.com/conduitio/conduit-connector-sdk"
 )
 
 // uploadFile uploads a new or existing file to the remote box directory.
@@ -39,6 +40,10 @@ func (d *Destination) uploadFile(ctx context.Context, r opencdc.Record) error {
 	if err != nil {
 		return NewInvalidFileError("invalid file size" + err.Error())
 	}
+
+	sdk.Logger(ctx).Trace().
+		Str("filename", filename).
+		Msg("Destination.uploadFile")
 
 	var fileID string
 	if r.Operation == opencdc.OperationUpdate {
@@ -63,6 +68,12 @@ func (d *Destination) uploadFile(ctx context.Context, r opencdc.Record) error {
 
 // handleFileChunk handles the chunked record to upload to remote box directory.
 func (d *Destination) handleFileChunk(ctx context.Context, r opencdc.Record) error {
+	sdk.Logger(ctx).Trace().
+		Str("filename", r.Metadata[opencdc.MetadataFileName]).
+		Str("chunk.index", r.Metadata[opencdc.MetadataFileChunkIndex]).
+		Str("chunk.count", r.Metadata[opencdc.MetadataFileChunkCount]).
+		Msg("Destination.handleFileChunk")
+
 	metaData, err := d.extractMetadata(r)
 	if err != nil {
 		return err

@@ -124,6 +124,10 @@ func (w *Worker) process(ctx context.Context) error {
 }
 
 func (w *Worker) processEntries(ctx context.Context, entries []box.Entry) error {
+	sdk.Logger(ctx).Debug().
+		Int("entries", len(entries)).
+		Msg("Worker.processEntries")
+
 	for _, entry := range entries {
 		if entry.CreatedAt.UnixNano() > w.lastProcessedTime {
 			if err := w.processEntry(ctx, entry, false); err != nil {

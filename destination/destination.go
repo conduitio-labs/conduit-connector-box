@@ -82,6 +82,8 @@ func (d *Destination) Open(ctx context.Context) error {
 }
 
 func (d *Destination) Write(ctx context.Context, records []opencdc.Record) (int, error) {
+	sdk.Logger(ctx).Debug().Int("records", len(records)).Msg("Destination.Write")
+	
 	for i, record := range records {
 		switch record.Operation {
 		case opencdc.OperationDelete:
