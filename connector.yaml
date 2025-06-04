@@ -26,7 +26,7 @@ specification:
     ### Delete Operation
 
     Box destination connector delete a record using MetadataFileName.
-  version: v0.0.1
+  version: v0.1.0
   author: Your Name
   source:
     parameters:
