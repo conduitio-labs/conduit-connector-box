@@ -7,6 +7,17 @@
 
 * https://developer.box.com/reference
 
+## Source
+
+The Box Source connector reads files from a configured Box directory and converts them into
+`opencdc.Record` that can be processed by Conduit. Files larger than `fileChunkSizeBytes`
+(maximum value 4MB) are split into smaller chunks, and each chunk is emitted as a separate record.
+
+### File Processing
+- Processes files of any size through automatic chunking
+- Configurable polling interval for checking updates
+- Retry mechanism for handling temporary failures
+
 ## Destination
 
 The Box Destination takes a Conduit record and uploads it to the remote box directory.
@@ -17,23 +28,18 @@ The box destination connector uploads the records in 3 different ways.
 
 * For a file which is <= 4MB the uploads the single record file by simple box upload endpoint.
 * For a file which is >= 4MB and <= 20MB, it keeps the file records in memory and once the last
-  record is appended it uploads it using the simple box upload endpoint.
+record is appended it uploads it using the simple box upload endpoint.
 * For a file which is > 20MB, it uploads the file using chunk upload endpoint. It first creates
-  a new session for chunk upload which gives session id and part size in response. Using this
-  session id and part size the records are then uploaded. It prepares the parts by keeping
-  them in memory and upload the parts one by one using chunk upload endpoint.
+a new session for chunk upload which gives session id and part size in response. Using this
+session id and part size the records are then uploaded. It prepares the parts by keeping
+them in memory and upload the parts one by one using chunk upload endpoint.
 
 ### Delete Operation
 
 Box destination connector delete a record using MetadataFileName.
 <!-- /readmegen:description -->
 
-## Source
-
-A source connector pulls data from an external resource and pushes it to
-downstream resources via Conduit.
-
-### Configuration
+## Source Configuration Parameters
 
 <!-- readmegen:source.parameters.yaml -->
 ```yaml
@@ -49,11 +55,28 @@ pipelines:
           # Type: string
           # Required: yes
           token: ""
+          # Size of a file chunk in bytes to split large files, maximum is 4MB.
+          # Type: int
+          # Required: no
+          fileChunkSizeBytes: "3932160"
           # ID of the Box directory to read/write files. Default is 0 for root
           # directory.
-          # Type: string
+          # Type: int
           # Required: no
           parentID: "0"
+          # This period is used by worker to poll for new data at regular
+          # intervals.
+          # Type: duration
+          # Required: no
+          pollingInterval: "5s"
+          # Maximum number of retry attempts.
+          # Type: int
+          # Required: no
+          retries: "0"
+          # Delay between retry attempts.
+          # Type: duration
+          # Required: no
+          retryDelay: "10s"
           # Maximum delay before an incomplete batch is read from the source.
           # Type: duration
           # Required: no
@@ -87,7 +110,7 @@ pipelines:
           # Whether to extract and encode the record payload with a schema.
           # Type: bool
           # Required: no
-          sdk.schema.extract.payload.enabled: "true"
+          sdk.schema.extract.payload.enabled: "false"
           # The subject of the payload schema. If the record metadata contains
           # the field "opencdc.collection" it is prepended to the subject name
           # and separated with a dot.
@@ -101,12 +124,7 @@ pipelines:
 ```
 <!-- /readmegen:source.parameters.yaml -->
 
-## Destination
-
-A destination connector pushes data from upstream resources to an external
-resource via Conduit.
-
-### Configuration
+## Destination Configuration Parameters
 
 <!-- readmegen:destination.parameters.yaml -->
 ```yaml
@@ -124,7 +142,7 @@ pipelines:
           token: ""
           # ID of the Box directory to read/write files. Default is 0 for root
           # directory.
-          # Type: string
+          # Type: int
           # Required: no
           parentID: "0"
           # Maximum delay before an incomplete batch is written to the
@@ -187,9 +205,6 @@ Run `make build` to build the connector.
 Run `make test` to run all the unit tests. Run `make test-integration` to run
 the integration tests.
 
-The Docker compose file at `test/docker-compose.yml` can be used to run the
-required resource locally.
-
 ## How to release?
 
 The release is done in two steps:
@@ -204,10 +219,4 @@ The release is done in two steps:
 
 ## Known Issues & Limitations
 
-- Known issue A
-- Limitation A
-
-## Planned work
-
-- [ ] Item A
-- [ ] Item B
+- Does not support syncing files which are renamed in source folder
