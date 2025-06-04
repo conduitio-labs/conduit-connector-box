@@ -1,10 +1,8 @@
 version: "1.0"
 specification:
   name: box
-  summary: A Conduit source connector for Box.com.
+  summary: A Conduit connector for Box.com.
   description: |
-    ## Destination
-
     ## Destination
 
     The Box Destination takes a Conduit record and uploads it to the remote Box directory.

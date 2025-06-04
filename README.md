@@ -1,10 +1,8 @@
 # Conduit Connector for <!-- readmegen:name -->Box<!-- /readmegen:name -->
 
-A [Conduit](https://conduit.io) source connector for Box.com.
+A [Conduit](https://conduit.io) destination connector for Box.com.
 
 <!-- readmegen:description -->
-## Destination
-
 ## Destination
 
 The Box Destination takes a Conduit record and uploads it to the remote Box directory.
