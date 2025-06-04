@@ -23,7 +23,7 @@ type Box interface {
 	// Docs: https://developer.box.com/reference/get-files-id-content
 	Download(ctx context.Context) ([]byte, error)
 
-	// UploadFile uploads a file to box folder.
+	// Upload uploads a file to box folder.
 	// Docs: https://developer.box.com/reference/post-files-content
 	Upload(ctx context.Context, filename, parentID, fileID string, content []byte) (*UploadResponse, error)
 
