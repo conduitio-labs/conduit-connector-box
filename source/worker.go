@@ -41,6 +41,7 @@ type Worker struct {
 	client    box.Box
 	config    Config
 	recordsCh chan<- opencdc.Record
+	errorCh   chan<- error
 	wg        *sync.WaitGroup
 
 	streamPosition    int
@@ -53,12 +54,14 @@ func NewWorker(
 	config Config,
 	position *Position,
 	recordsCh chan<- opencdc.Record,
+	errorCh chan<- error,
 	wg *sync.WaitGroup,
 ) *Worker {
 	return &Worker{
 		client:            client,
 		config:            config,
 		recordsCh:         recordsCh,
+		errorCh:           errorCh,
 		wg:                wg,
 		streamPosition:    position.StreamPosition,
 		currentChunkInfo:  position.ChunkInfo,
@@ -67,7 +70,10 @@ func NewWorker(
 }
 
 func (w *Worker) Start(ctx context.Context) {
-	defer w.wg.Done()
+	defer func() {
+		close(w.recordsCh)
+		w.wg.Done()
+	}()
 	retries := w.config.Retries
 
 	for {
@@ -77,6 +83,7 @@ func (w *Worker) Start(ctx context.Context) {
 		if err != nil {
 			if retries == 0 {
 				sdk.Logger(ctx).Err(err).Msg("retries exhausted, worker shutting down...")
+				w.errorCh <- err
 				return
 			}
 			retries--

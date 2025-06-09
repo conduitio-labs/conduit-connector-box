@@ -40,6 +40,7 @@ type Source struct {
 	position  *Position
 	client    box.Box
 	ch        chan opencdc.Record
+	errCh     chan error
 	workersWg *sync.WaitGroup
 }
 
@@ -110,6 +111,7 @@ func (s *Source) Open(ctx context.Context, position opencdc.Position) error {
 	}
 
 	s.ch = make(chan opencdc.Record, 5)
+	s.errCh = make(chan error)
 	s.workersWg = &sync.WaitGroup{}
 
 	// Start worker
@@ -120,6 +122,7 @@ func (s *Source) Open(ctx context.Context, position opencdc.Position) error {
 			s.config,
 			s.position,
 			s.ch,
+			s.errCh,
 			s.workersWg,
 		).Start(ctx)
 	}()
@@ -136,6 +139,8 @@ func (s *Source) ReadN(ctx context.Context, n int) ([]opencdc.Record, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
+	case err := <-s.errCh:
+		return nil, fmt.Errorf("worker error: %w", err)
 	case r, ok := <-s.ch:
 		if !ok {
 			return nil, ErrReadingData
@@ -145,6 +150,8 @@ func (s *Source) ReadN(ctx context.Context, n int) ([]opencdc.Record, error) {
 
 	for len(records) < n {
 		select {
+		case err := <-s.errCh:
+			return records, fmt.Errorf("worker error: %w", err)
 		case r, ok := <-s.ch:
 			if !ok {
 				break
@@ -171,6 +178,10 @@ func (s *Source) Teardown(ctx context.Context) error {
 	if s.ch != nil {
 		close(s.ch)
 		s.ch = nil
+	}
+	if s.errCh != nil {
+		close(s.errCh)
+		s.errCh = nil
 	}
 	return nil
 }
