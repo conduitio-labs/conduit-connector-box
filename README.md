@@ -11,9 +11,9 @@ The Box Destination takes a Conduit record and uploads it to the remote Box dire
 
 The Box destination connector uploads the records in 3 different ways.
 
-* For a file which is <= 4MB, it uploads the single record file using a single
+* For a file which is ≤ 4MB, it uploads the single record file using a single
 `POST /files/content`.
-* For a file which is >= 4MB and <= 20MB, it assembles the file in memory. Once
+* For a file which is ≥ 4MB and ≤ 20MB, it assembles the file in memory. Once
 the file is fully assembled, it uploads it using a single
 `POST /files/content` request.
 * For a file which is > 20MB, it uploads the file using chunk upload endpoint.
@@ -186,13 +186,3 @@ The release is done in two steps:
   change.
 - Tag the connector, which will kick off a release. This can be done
   with [tag.sh](/scripts/tag.sh).
-
-## Known Issues & Limitations
-
-- Known issue A
-- Limitation A
-
-## Planned work
-
-- [ ] Item A
-- [ ] Item B
