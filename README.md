@@ -78,7 +78,6 @@ downstream resources via Conduit.
 version: 2.2
 pipelines:
   - id: example
-    type: source
     status: running
     connectors:
       - id: example
@@ -99,7 +98,6 @@ resource via Conduit.
 version: 2.2
 pipelines:
   - id: example
-    type: destination
     status: running
     connectors:
       - id: example
