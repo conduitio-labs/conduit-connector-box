@@ -195,6 +195,7 @@ func (c *HTTPClient) CommitUpload(ctx context.Context, sessionID, digest string,
 
 func (c *HTTPClient) ListFolderItems(ctx context.Context, folderID int, marker string, limit int) ([]Entry, string, bool, error) {
 	url := fmt.Sprintf("%s/2.0/folders/%d/items?fields=parent,file_version,name,sequence_id,sha1,modified_at,size,extension&usemarker=true", BaseURL, folderID)
+
 	if marker != "" {
 		url = fmt.Sprintf("%s&marker=%s", url, marker)
 	}
@@ -280,6 +281,12 @@ func (c *HTTPClient) Delete(ctx context.Context, fileID string) error {
 	}
 	resp.Body.Close()
 	return nil
+}
+
+func (c *HTTPClient) Close() {
+	if c.httpClient != nil {
+		c.httpClient.CloseIdleConnections()
+	}
 }
 
 func (c *HTTPClient) makeRequest(ctx context.Context, method, url string, headers map[string]string, reqBody io.Reader) (*http.Response, error) {

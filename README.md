@@ -1,24 +1,69 @@
 # Conduit Connector for <!-- readmegen:name -->Box<!-- /readmegen:name -->
 
-[Conduit](https://conduit.io) connector for <!-- readmegen:name -->Box<!-- /readmegen:name -->.
+A [Conduit](https://conduit.io) destination connector for Box.com.
 
 <!-- readmegen:description -->
-## Source
-
 ## Destination
 
-The Box Destination takes a Conduit record and uploads it to the remote box directory.
+The Box Destination takes a Conduit record and uploads it to the remote Box directory.
 
 ### Create, Update and Snapshot Operations
 
-The box destination connector uploads the records in 3 different ways. 
-* For a file which is <= 4MB the uploads the single record file by simple box upload endpoint. 
-* For a file which is >=4B and <= 20MB, it keeps the file records in memory and once the last
-  record is appended it uploads it using the simple box upload endpoint.
-* For a file which is > 20MB, it uploads the file using chunk upload endpoint. It first creates 
-  a new session for chunk upload which gives session id and part size in response. Using this
-  session id and part size the records are then uploaded. It prepares the parts by keeping 
-  them in memory and upload the parts one by one using chunk upload endpoint.
+The Box destination connector uploads the records in 3 different ways.
+
+* For a file which is ≤ 4MB, it uploads the single record file using a single
+`POST /files/content`.
+* For a file which is ≥ 4MB and ≤ 20MB, it assembles the file in memory. Once
+the file is fully assembled, it uploads it using a single
+`POST /files/content` request.
+* For a file which is > 20MB, it uploads the file using chunk upload endpoint.
+It first creates a new session for chunk upload which gives session id and
+part size in response. Using this session id and part size the records are
+then uploaded. It prepares the parts by keeping them in memory and upload the
+parts one by one using chunk upload endpoint.
+
+### Delete Operation
+
+An OpenCDC record with the `delete` operation is processed so that the file
+that's found in the `opencdc.file.name` metadata field is deleted.
+
+## Generating an Access Token
+
+The destination connector requires a token so it can authenticate with the
+Box.com HTTP API. To generate it, please follow the steps below.
+
+### Step 1: Access the Box Developer Console
+
+1. Navigate to [https://app.box.com/developers/console](https://app.box.com/developers/console).
+2. Sign in using your Box.com credentials.
+
+### Step 2: Create a New App
+
+1. In the Box Developer Console, click **Create Platform App**.
+2. Choose **Custom App** as the app type.
+3. Select **User Authentication (OAuth 2.0)** as the authentication method.
+4. Enter your app details:
+   - **App Name**: Use a descriptive name (e.g., *Conduit Box Connector Prod*).
+   - **Description**: Provide a brief explanation of your app's purpose.
+   - **Purpose**: Describe the app's purpose. This field is informational only and does not affect connector functionality.
+5. Click **Create App**.
+
+### Step 3: Configure App Settings
+
+1. On your app's configuration page, go to the **Configuration** tab.
+2. Under **Application Scopes**, enable:
+   - **Read all files and folders stored in Box**
+
+### Step 4: Obtain an Access Token
+
+1. In the **Developer Token** section, click **Generate Developer Token**.
+2. Copy the generated token for use.
+
+### Token Management
+
+You can store the access token in one of the following ways:
+- As a plain string in a configuration file
+- As an environment variable
 <!-- /readmegen:description -->
 
 ## Source
@@ -38,7 +83,7 @@ pipelines:
       - id: example
         plugin: "box"
         settings:
-          # Token is used to authenticate API access.
+          # Token used to authenticate API access.
           # Type: string
           # Required: yes
           token: ""
@@ -46,8 +91,8 @@ pipelines:
           # Type: int
           # Required: no
           fileChunkSizeBytes: "3145728"
-          # ID of the Box directory to read/write files. Default is 0 for root
-          # directory.
+          # ID of the Box directory to read/write files. Default is 0 for the
+          # root directory.
           # Type: int
           # Required: no
           parentID: "0"
@@ -128,12 +173,12 @@ pipelines:
       - id: example
         plugin: "box"
         settings:
-          # Token is used to authenticate API access.
+          # Token used to authenticate API access.
           # Type: string
           # Required: yes
           token: ""
-          # ID of the Box directory to read/write files. Default is 0 for root
-          # directory.
+          # ID of the Box directory to read/write files. Default is 0 for the
+          # root directory.
           # Type: int
           # Required: no
           parentID: "0"
@@ -211,13 +256,3 @@ The release is done in two steps:
   change.
 - Tag the connector, which will kick off a release. This can be done
   with [tag.sh](/scripts/tag.sh).
-
-## Known Issues & Limitations
-
-- Known issue A
-- Limitation A
-
-## Planned work
-
-- [ ] Item A
-- [ ] Item B

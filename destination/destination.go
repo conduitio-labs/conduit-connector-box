@@ -115,5 +115,10 @@ func (d *Destination) Write(ctx context.Context, records []opencdc.Record) (int,
 
 func (d *Destination) Teardown(ctx context.Context) error {
 	sdk.Logger(ctx).Info().Msg("Tearing down Box destination")
+	if d.client != nil {
+		d.client.Close()
+	}
+	d.sessions = nil
+	d.files = nil
 	return nil
 }
