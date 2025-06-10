@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strconv"
 	"sync"
 	"time"
 
@@ -111,31 +112,18 @@ func (w *Worker) process(ctx context.Context) error {
 }
 
 func (w *Worker) snapshot(ctx context.Context) error {
-	marker := ""
-	for {
-		items, nextMarker, hasMore, err := w.client.ListFolderItems(ctx, w.config.ParentID, marker, *w.config.BatchSize)
-		if err != nil {
-			return fmt.Errorf("list folder items failed: %w", err)
-		}
-
-		// Get current stream position.
-		_, currentPosition, err := w.client.GetEvents(ctx, w.streamPosition)
-		if err != nil {
-			return fmt.Errorf("get latest events failed: %w", err)
-		}
-		w.streamPosition = currentPosition
-
-		for _, item := range items {
-			if err := w.processFile(ctx, item); err != nil {
-				return fmt.Errorf("process file failed: %w", err)
-			}
-		}
-
-		if !hasMore {
-			break
-		}
-		marker = nextMarker
+	// Get current stream position.
+	_, currentPosition, err := w.client.GetEvents(ctx, w.streamPosition)
+	if err != nil {
+		return fmt.Errorf("get latest events failed: %w", err)
 	}
+
+	err = w.processFolder(ctx, w.config.ParentID)
+	if err != nil {
+		return fmt.Errorf("snapshot for folder%v failed: %w", w.config.ParentID, err)
+	}
+
+	w.streamPosition = currentPosition
 
 	return nil
 }
@@ -154,7 +142,7 @@ func (w *Worker) cdc(ctx context.Context) error {
 
 		switch event.Type {
 		case itemCreate, itemUpload, itemModify, itemRename:
-			if err := w.processFile(ctx, event.Source); err != nil {
+			if err := w.processItem(ctx, event.Source); err != nil {
 				return fmt.Errorf("process file failed: %w", err)
 			}
 		case itemTrash:
@@ -167,11 +155,20 @@ func (w *Worker) cdc(ctx context.Context) error {
 	return nil
 }
 
-func (w *Worker) processFile(ctx context.Context, entry box.Entry) error {
-	if entry.Size > w.config.FileChunkSizeBytes {
-		return w.processChunkedFile(ctx, entry)
+func (w *Worker) processItem(ctx context.Context, entry box.Entry) error {
+	switch entry.Type {
+	case typeFolder:
+		folderID, err := strconv.Atoi(entry.ID)
+		if err != nil {
+			return fmt.Errorf("invalid folder id: %w", err)
+		}
+		return w.processFolder(ctx, folderID)
+	case typeFile:
+		return w.processFile(ctx, entry)
+	default:
+		sdk.Logger(ctx).Trace().Msgf("ignoring item type: %v", entry.Type)
+		return nil
 	}
-	return w.processFullFile(ctx, entry)
 }
 
 func (w *Worker) processChunkedFile(ctx context.Context, entry box.Entry) error {
@@ -345,4 +342,35 @@ func (w *Worker) shouldSkipEvent(event box.Event) bool {
 	}
 
 	return false
+}
+
+func (w *Worker) processFolder(ctx context.Context, folderID int) error {
+	marker := ""
+	for {
+		items, nextMarker, hasMore, err := w.client.ListFolderItems(ctx, folderID, marker, *w.config.BatchSize)
+		if err != nil {
+			return fmt.Errorf("list folder items failed: %w", err)
+		}
+
+		for _, item := range items {
+			if err := w.processItem(ctx, item); err != nil {
+				return fmt.Errorf("process file failed: %w", err)
+			}
+		}
+
+		if !hasMore {
+			break
+		}
+		marker = nextMarker
+	}
+
+	return nil
+}
+
+func (w *Worker) processFile(ctx context.Context, entry box.Entry) error {
+	if entry.Size > w.config.FileChunkSizeBytes {
+		return w.processChunkedFile(ctx, entry)
+	}
+
+	return w.processFullFile(ctx, entry)
 }
