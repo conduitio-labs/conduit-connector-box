@@ -92,13 +92,29 @@ type Entry struct {
 		ID   string `json:"id"`
 		Name string `json:"name"`
 	} `json:"parent"`
-	Name       string    `json:"name"`
-	SequenceID string    `json:"sequence_id"`
-	Sha1       string    `json:"sha1"`
-	CreatedAt  time.Time `json:"created_at"`
-	ModifiedAt time.Time `json:"modified_at"`
-	Size       int       `json:"size"`
-	Extension  string    `json:"extension"`
+	PathCollection PathCollection `json:"path_collection"`
+	Name           string         `json:"name"`
+	SequenceID     string         `json:"sequence_id"`
+	Sha1           string         `json:"sha1"`
+	CreatedAt      time.Time      `json:"created_at"`
+	ModifiedAt     time.Time      `json:"modified_at"`
+	Size           int            `json:"size"`
+	Extension      string         `json:"extension"`
+}
+
+// PathCollectionEntry represents a single entry in the path collection
+type PathCollectionEntry struct {
+	Type       string  `json:"type"`
+	ID         string  `json:"id"`
+	SequenceID *string `json:"sequence_id"`
+	Etag       *string `json:"etag"`
+	Name       string  `json:"name"`
+}
+
+// PathCollection represents the collection of entries
+type PathCollection struct {
+	TotalCount int                   `json:"total_count"`
+	Entries    []PathCollectionEntry `json:"entries"`
 }
 
 // Event represents a change event in Box, such as file creation or modification.
