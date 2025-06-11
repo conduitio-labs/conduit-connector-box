@@ -95,6 +95,10 @@ func (w *Worker) Start(ctx context.Context) {
 }
 
 func (w *Worker) processFolder(ctx context.Context, folderID int) error {
+	sdk.Logger(ctx).Debug().
+		Int("folder_id", folderID).
+		Msgf("processing folder")
+
 	marker := ""
 	for {
 		response, err := w.client.ListFolderItems(ctx, folderID, marker, *w.config.BatchSize)
@@ -151,6 +155,10 @@ func (w *Worker) processFile(ctx context.Context, entry box.Entry) error {
 }
 
 func (w *Worker) processFileAnySize(ctx context.Context, entry box.Entry, existing bool) error {
+	sdk.Logger(ctx).Trace().
+		Str("file_id", entry.ID).
+		Msg("processing file")
+
 	if entry.Size > w.config.FileChunkSizeBytes {
 		return w.processChunkedFile(ctx, entry, existing)
 	}
