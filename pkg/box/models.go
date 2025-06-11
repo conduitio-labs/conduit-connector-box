@@ -78,6 +78,11 @@ type CommitUploadResponse struct {
 	TotalCount int     `json:"total_count"`
 }
 
+type PaginationResponse struct {
+	Entries    []Entry `json:"entries"`
+	NextMarker string  `json:"next_marker"`
+}
+
 // Entry represents metadata about a file or folder in Box.
 type Entry struct {
 	Etag        string `json:"etag"`

@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strconv"
 	"sync"
 	"time"
 
@@ -27,14 +28,8 @@ import (
 )
 
 const (
-	typeFolder  = "folder"
-	typeFile    = "file"
-	typeDeleted = "deleted"
-	itemCreate  = "ITEM_CREATE"
-	itemUpload  = "ITEM_UPLOAD"
-	itemModify  = "ITEM_MODIFY"
-	itemRename  = "ITEM_RENAME"
-	itemTrash   = "ITEM_TRASH"
+	typeFolder = "folder"
+	typeFile   = "file"
 )
 
 type Worker struct {
@@ -76,7 +71,7 @@ func (w *Worker) Start(ctx context.Context) {
 	for {
 		waitDuration := w.config.PollingInterval
 
-		err := w.process(ctx)
+		err := w.processFolder(ctx, w.config.ParentID)
 		if err != nil {
 			if retries == 0 {
 				sdk.Logger(ctx).Err(err).Msg("retries exhausted, worker shutting down...")
@@ -99,56 +94,67 @@ func (w *Worker) Start(ctx context.Context) {
 	}
 }
 
-func (w *Worker) process(ctx context.Context) error {
+func (w *Worker) processFolder(ctx context.Context, folderID int) error {
 	marker := ""
 	for {
-		// Box Events API lacks folder/date filters and has delayed updates.
-		// Using polling for now using ListFolderItems; monitor API updates for improvements.
-		entries, nextMarker, hasMore, err := w.client.ListFolderItems(ctx, w.config.ParentID, marker, *w.config.BatchSize)
+		response, err := w.client.ListFolderItems(ctx, folderID, marker, *w.config.BatchSize)
 		if err != nil {
 			return fmt.Errorf("list folder items failed: %w", err)
 		}
 
-		err = w.processEntries(ctx, entries)
-		if err != nil {
-			return err
+		for _, item := range response.Entries {
+			if err := w.processItem(ctx, item); err != nil {
+				return fmt.Errorf("process file failed: %w", err)
+			}
 		}
 
-		if !hasMore {
+		if response.NextMarker == "" {
 			break
 		}
-		marker = nextMarker
+		marker = response.NextMarker
 	}
 
 	return nil
 }
 
-func (w *Worker) processEntries(ctx context.Context, entries []box.Entry) error {
-	for _, entry := range entries {
-		if entry.CreatedAt.UnixNano() > w.lastProcessedTime {
-			if err := w.processEntry(ctx, entry, false); err != nil {
-				return fmt.Errorf("process new file failed: %w", err)
-			}
+func (w *Worker) processItem(ctx context.Context, entry box.Entry) error {
+	switch entry.Type {
+	case typeFolder:
+		folderID, err := strconv.Atoi(entry.ID)
+		if err != nil {
+			return fmt.Errorf("invalid folder id: %w", err)
 		}
-
-		if entry.CreatedAt.UnixNano() <= w.lastProcessedTime && entry.ModifiedAt.UnixNano() > w.lastProcessedTime {
-			if err := w.processEntry(ctx, entry, true); err != nil {
-				return fmt.Errorf("process existing file failed: %w", err)
-			}
-		}
-	}
-
-	return nil
-}
-
-func (w *Worker) processEntry(ctx context.Context, entry box.Entry, existing bool) error {
-	if entry.Type != typeFile {
+		return w.processFolder(ctx, folderID)
+	case typeFile:
+		return w.processFile(ctx, entry)
+	default:
+		sdk.Logger(ctx).Trace().Msgf("ignoring item type: %v", entry.Type)
 		return nil
 	}
+}
 
+func (w *Worker) processFile(ctx context.Context, entry box.Entry) error {
+	if entry.CreatedAt.UnixNano() > w.lastProcessedTime {
+		if err := w.processFileAnySize(ctx, entry, false); err != nil {
+			return fmt.Errorf("process new file failed: %w", err)
+		}
+	}
+
+	if entry.CreatedAt.UnixNano() <= w.lastProcessedTime && entry.ModifiedAt.UnixNano() > w.lastProcessedTime {
+		if err := w.processFileAnySize(ctx, entry, true); err != nil {
+			return fmt.Errorf("process existing file failed: %w", err)
+		}
+	}
+
+	// a file that's already been processed
+	return nil
+}
+
+func (w *Worker) processFileAnySize(ctx context.Context, entry box.Entry, existing bool) error {
 	if entry.Size > w.config.FileChunkSizeBytes {
 		return w.processChunkedFile(ctx, entry, existing)
 	}
+
 	return w.processFullFile(ctx, entry, existing)
 }
 
