@@ -80,7 +80,7 @@ func (w *Worker) Start(ctx context.Context) {
 	for {
 		waitDuration := w.config.PollingInterval
 
-		err := w.process(ctx)
+		err := w.fetchRecords(ctx)
 		if err != nil {
 			if retries == 0 {
 				sdk.Logger(ctx).Err(err).Msg("retries exhausted, worker shutting down...")
@@ -103,15 +103,15 @@ func (w *Worker) Start(ctx context.Context) {
 	}
 }
 
-func (w *Worker) process(ctx context.Context) error {
+func (w *Worker) fetchRecords(ctx context.Context) error {
 	if w.streamPosition == 0 {
-		return w.snapshot(ctx)
+		return w.fetchSnapshotData(ctx)
 	}
 
 	return w.cdc(ctx)
 }
 
-func (w *Worker) snapshot(ctx context.Context) error {
+func (w *Worker) fetchSnapshotData(ctx context.Context) error {
 	// Get current stream position.
 	_, currentPosition, err := w.client.GetEvents(ctx, w.streamPosition)
 	if err != nil {
@@ -171,7 +171,18 @@ func (w *Worker) processItem(ctx context.Context, entry box.Entry) error {
 	}
 }
 
+func (w *Worker) processFile(ctx context.Context, entry box.Entry) error {
+	if entry.Size > w.config.FileChunkSizeBytes {
+		return w.processChunkedFile(ctx, entry)
+	}
+
+	return w.processFullFile(ctx, entry)
+}
+
 func (w *Worker) processChunkedFile(ctx context.Context, entry box.Entry) error {
+	sdk.Logger(ctx).Trace().Str("entry_id", entry.ID).
+		Msg("Worker: processing chunked file")
+
 	totalChunks := (entry.Size + w.config.FileChunkSizeBytes - 1) / w.config.FileChunkSizeBytes
 
 	startChunk := 1
@@ -204,9 +215,13 @@ func (w *Worker) processChunkedFile(ctx context.Context, entry box.Entry) error 
 }
 
 func (w *Worker) processFullFile(ctx context.Context, entry box.Entry) error {
-	fmt.Println("processing file ----- ", entry.Name)
+	sdk.Logger(ctx).Trace().Str("entry_id", entry.ID).Msg("Worker: processing full file")
+
 	fileData, err := w.downloadChunk(ctx, entry.ID, "")
 	if err != nil {
+		sdk.Logger(ctx).Err(err).
+			Str("entry_id", entry.ID).
+			Msg("Worker: failed to download file")
 		return fmt.Errorf("download failed: %w", err)
 	}
 
@@ -365,12 +380,4 @@ func (w *Worker) processFolder(ctx context.Context, folderID int) error {
 	}
 
 	return nil
-}
-
-func (w *Worker) processFile(ctx context.Context, entry box.Entry) error {
-	if entry.Size > w.config.FileChunkSizeBytes {
-		return w.processChunkedFile(ctx, entry)
-	}
-
-	return w.processFullFile(ctx, entry)
 }
