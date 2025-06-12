@@ -193,7 +193,7 @@ func (c *HTTPClient) CommitUpload(ctx context.Context, sessionID, digest string,
 	return response, nil
 }
 
-func (c *HTTPClient) ListFolderItems(ctx context.Context, folderID int, marker string, limit int) ([]Entry, string, bool, error) {
+func (c *HTTPClient) ListFolderItems(ctx context.Context, folderID int, marker string, limit int) (PaginationResponse, error) {
 	url := fmt.Sprintf("%s/2.0/folders/%d/items?fields=parent,file_version,name,sequence_id,sha1,created_at,modified_at,size,extension&usemarker=true&sort=date", BaseURL, folderID)
 	if marker != "" {
 		url = fmt.Sprintf("%s&marker=%s", url, marker)
@@ -204,21 +204,16 @@ func (c *HTTPClient) ListFolderItems(ctx context.Context, folderID int, marker s
 
 	resp, err := c.makeRequest(ctx, http.MethodGet, url, nil, nil)
 	if err != nil {
-		return nil, "", false, err
+		return PaginationResponse{}, err
 	}
 	defer resp.Body.Close()
 
-	var result struct {
-		Entries    []Entry `json:"entries"`
-		NextMarker string  `json:"next_marker"`
+	var response PaginationResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return PaginationResponse{}, fmt.Errorf("decode response failed: %w", err)
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, "", false, fmt.Errorf("decode response failed: %w", err)
-	}
-
-	hasMore := result.NextMarker != ""
-	return result.Entries, result.NextMarker, hasMore, nil
+	return response, nil
 }
 
 func (c *HTTPClient) VerifyFolder(ctx context.Context, id int) (bool, error) {

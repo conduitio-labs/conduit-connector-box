@@ -17,6 +17,7 @@ package source
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/conduitio/conduit-commons/opencdc"
 )
@@ -29,8 +30,8 @@ type ChunkInfo struct {
 }
 
 type Position struct {
-	ChunkInfo             *ChunkInfo `json:"chunk_info"`
-	LastProcessedUnixTime int64      `json:"last_processed_unix_time"`
+	ChunkInfo      *ChunkInfo `json:"chunk_info"`
+	LastModifiedAt time.Time  `json:"last_modified_at"`
 }
 
 func NewPosition() *Position {
@@ -49,10 +50,10 @@ func ParseSDKPosition(position opencdc.Position) (*Position, error) {
 	return &pos, nil
 }
 
-func ToSDKPosition(lastProcessed int64, chunkInfo *ChunkInfo) (opencdc.Position, error) {
+func ToSDKPosition(lastModifiedAt time.Time, chunkInfo *ChunkInfo) (opencdc.Position, error) {
 	p := &Position{
-		ChunkInfo:             chunkInfo,
-		LastProcessedUnixTime: lastProcessed,
+		ChunkInfo:      chunkInfo,
+		LastModifiedAt: lastModifiedAt,
 	}
 
 	positionBytes, err := json.Marshal(p)
