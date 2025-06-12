@@ -51,7 +51,7 @@ type Box interface {
 
 	// VerifyFolder checks whether a folder with the given ID exists and is accessible.
 	// Docs: https://developer.box.com/reference/get-folders-id
-	VerifyFolder(ctx context.Context, id int) (bool, error)
+	VerifyFolder(ctx context.Context, id int) error
 
 	// Close closes the HTTPClient
 	Close()

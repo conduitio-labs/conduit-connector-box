@@ -104,9 +104,9 @@ func (s *Source) Open(ctx context.Context, position opencdc.Position) error {
 
 	// Verify folder exists
 	if s.config.ParentID != 0 {
-		isFolder, err := s.client.VerifyFolder(ctx, s.config.ParentID)
-		if err != nil || !isFolder {
-			return fmt.Errorf("error verifying folder id: %w", err)
+		err := s.client.VerifyFolder(ctx, s.config.ParentID)
+		if err != nil {
+			return fmt.Errorf("error verifying folder id %v: %w", s.config.ParentID, err)
 		}
 	}
 

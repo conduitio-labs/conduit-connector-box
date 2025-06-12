@@ -216,12 +216,12 @@ func (c *HTTPClient) ListFolderItems(ctx context.Context, folderID int, marker s
 	return response, nil
 }
 
-func (c *HTTPClient) VerifyFolder(ctx context.Context, id int) (bool, error) {
+func (c *HTTPClient) VerifyFolder(ctx context.Context, id int) error {
 	url := fmt.Sprintf("%s/2.0/folders/%d", BaseURL, id)
 
 	resp, err := c.makeRequest(ctx, http.MethodGet, url, nil, nil)
 	if err != nil {
-		return false, err
+		return fmt.Errorf("http request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -231,14 +231,14 @@ func (c *HTTPClient) VerifyFolder(ctx context.Context, id int) (bool, error) {
 		Name string `json:"name"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return false, fmt.Errorf("decode response failed: %w", err)
+		return fmt.Errorf("decode response failed: %w", err)
 	}
 
 	if result.Type != "folder" {
-		return false, ErrNotAFolder
+		return ErrNotAFolder
 	}
 
-	return true, nil
+	return nil
 }
 
 func (c *HTTPClient) Delete(ctx context.Context, fileID string) error {
