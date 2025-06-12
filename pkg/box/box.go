@@ -25,7 +25,7 @@ type Box interface {
 	// Docs: https://developer.box.com/reference/get-files-id-content
 	Download(ctx context.Context, fileID string, rangeHeader string) (io.ReadCloser, error)
 
-	// UploadFile uploads a file to box folder.
+	// Upload uploads a file to box folder.
 	// Docs: https://developer.box.com/reference/post-files-content
 	Upload(ctx context.Context, filename string, parentID int, fileID string, content []byte) (*UploadResponse, error)
 

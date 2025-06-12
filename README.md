@@ -1,6 +1,6 @@
 # Conduit Connector for <!-- readmegen:name -->Box<!-- /readmegen:name -->
 
-[Conduit](https://conduit.io) connector for <!-- readmegen:name -->Box<!-- /readmegen:name -->.
+A [Conduit](https://conduit.io) destination connector for Box.com.
 
 <!-- readmegen:description -->
 ## API Reference
@@ -20,23 +20,65 @@ The Box Source connector reads files from a configured Box directory and convert
 
 ## Destination
 
-The Box Destination takes a Conduit record and uploads it to the remote box directory.
+The Box Destination takes a Conduit record and uploads it to the remote Box directory.
 
 ### Create, Update and Snapshot Operations
 
-The box destination connector uploads the records in 3 different ways.
+The Box destination connector uploads the records in 3 different ways.
 
-* For a file which is <= 4MB the uploads the single record file by simple box upload endpoint.
-* For a file which is >= 4MB and <= 20MB, it keeps the file records in memory and once the last
-record is appended it uploads it using the simple box upload endpoint.
-* For a file which is > 20MB, it uploads the file using chunk upload endpoint. It first creates
-a new session for chunk upload which gives session id and part size in response. Using this
-session id and part size the records are then uploaded. It prepares the parts by keeping
-them in memory and upload the parts one by one using chunk upload endpoint.
+* For a file which is ≤ 4MB, it uploads the single record file using a single
+`POST /files/content`.
+* For a file which is ≥ 4MB and ≤ 20MB, it assembles the file in memory. Once
+the file is fully assembled, it uploads it using a single
+`POST /files/content` request.
+* For a file which is > 20MB, it uploads the file using chunk upload endpoint.
+It first creates a new session for chunk upload which gives session id and
+part size in response. Using this session id and part size the records are
+then uploaded. It prepares the parts by keeping them in memory and upload the
+parts one by one using chunk upload endpoint.
 
 ### Delete Operation
 
-Box destination connector delete a record using MetadataFileName.
+An OpenCDC record with the `delete` operation is processed so that the file
+that's found in the `opencdc.file.name` metadata field is deleted.
+
+## Generating an Access Token
+
+The destination connector requires a token so it can authenticate with the
+Box.com HTTP API. To generate it, please follow the steps below.
+
+### Step 1: Access the Box Developer Console
+
+1. Navigate to [https://app.box.com/developers/console](https://app.box.com/developers/console).
+2. Sign in using your Box.com credentials.
+
+### Step 2: Create a New App
+
+1. In the Box Developer Console, click **Create Platform App**.
+2. Choose **Custom App** as the app type.
+3. Select **User Authentication (OAuth 2.0)** as the authentication method.
+4. Enter your app details:
+   - **App Name**: Use a descriptive name (e.g., *Conduit Box Connector Prod*).
+   - **Description**: Provide a brief explanation of your app's purpose.
+   - **Purpose**: Describe the app's purpose. This field is informational only and does not affect connector functionality.
+5. Click **Create App**.
+
+### Step 3: Configure App Settings
+
+1. On your app's configuration page, go to the **Configuration** tab.
+2. Under **Application Scopes**, enable:
+   - **Read all files and folders stored in Box**
+
+### Step 4: Obtain an Access Token
+
+1. In the **Developer Token** section, click **Generate Developer Token**.
+2. Copy the generated token for use.
+
+### Token Management
+
+You can store the access token in one of the following ways:
+- As a plain string in a configuration file
+- As an environment variable
 <!-- /readmegen:description -->
 
 ## Source Configuration Parameters
@@ -51,76 +93,6 @@ pipelines:
       - id: example
         plugin: "box"
         settings:
-          # Token is used to authenticate API access.
-          # Type: string
-          # Required: yes
-          token: ""
-          # Size of a file chunk in bytes to split large files, maximum is 4MB.
-          # Type: int
-          # Required: no
-          fileChunkSizeBytes: "3932160"
-          # ID of the Box directory to read/write files. Default is 0 for root
-          # directory.
-          # Type: int
-          # Required: no
-          parentID: "0"
-          # This period is used by worker to poll for new data at regular
-          # intervals.
-          # Type: duration
-          # Required: no
-          pollingInterval: "5s"
-          # Maximum number of retry attempts.
-          # Type: int
-          # Required: no
-          retries: "0"
-          # Delay between retry attempts.
-          # Type: duration
-          # Required: no
-          retryDelay: "10s"
-          # Maximum delay before an incomplete batch is read from the source.
-          # Type: duration
-          # Required: no
-          sdk.batch.delay: "0"
-          # Maximum size of batch before it gets read from the source.
-          # Type: int
-          # Required: no
-          sdk.batch.size: "0"
-          # Specifies whether to use a schema context name. If set to false, no
-          # schema context name will be used, and schemas will be saved with the
-          # subject name specified in the connector (not safe because of name
-          # conflicts).
-          # Type: bool
-          # Required: no
-          sdk.schema.context.enabled: "true"
-          # Schema context name to be used. Used as a prefix for all schema
-          # subject names. If empty, defaults to the connector ID.
-          # Type: string
-          # Required: no
-          sdk.schema.context.name: ""
-          # Whether to extract and encode the record key with a schema.
-          # Type: bool
-          # Required: no
-          sdk.schema.extract.key.enabled: "true"
-          # The subject of the key schema. If the record metadata contains the
-          # field "opencdc.collection" it is prepended to the subject name and
-          # separated with a dot.
-          # Type: string
-          # Required: no
-          sdk.schema.extract.key.subject: "key"
-          # Whether to extract and encode the record payload with a schema.
-          # Type: bool
-          # Required: no
-          sdk.schema.extract.payload.enabled: "false"
-          # The subject of the payload schema. If the record metadata contains
-          # the field "opencdc.collection" it is prepended to the subject name
-          # and separated with a dot.
-          # Type: string
-          # Required: no
-          sdk.schema.extract.payload.subject: "payload"
-          # The type of the payload schema.
-          # Type: string
-          # Required: no
-          sdk.schema.extract.type: "avro"
 ```
 <!-- /readmegen:source.parameters.yaml -->
 
@@ -136,12 +108,12 @@ pipelines:
       - id: example
         plugin: "box"
         settings:
-          # Token is used to authenticate API access.
+          # Token used to authenticate API access.
           # Type: string
           # Required: yes
           token: ""
-          # ID of the Box directory to read/write files. Default is 0 for root
-          # directory.
+          # ID of the Box directory to read/write files. The default is 0 (the
+          # root directory).
           # Type: int
           # Required: no
           parentID: "0"

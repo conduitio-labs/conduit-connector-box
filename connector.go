@@ -20,7 +20,6 @@ import (
 	_ "embed"
 
 	"github.com/conduitio-labs/conduit-connector-box/destination"
-	"github.com/conduitio-labs/conduit-connector-box/source"
 	sdk "github.com/conduitio/conduit-connector-sdk"
 )
 
@@ -31,6 +30,6 @@ var version = "(devel)"
 
 var Connector = sdk.Connector{
 	NewSpecification: sdk.YAMLSpecification(specs, version),
-	NewSource:        source.NewSource,
+	NewSource:        nil,
 	NewDestination:   destination.NewDestination,
 }
