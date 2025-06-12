@@ -3,6 +3,21 @@
 A [Conduit](https://conduit.io) destination connector for Box.com.
 
 <!-- readmegen:description -->
+## API Reference
+
+* https://developer.box.com/reference
+
+## Source
+
+The Box Source connector reads files from a configured Box directory and converts them into
+`opencdc.Record` that can be processed by Conduit. Files larger than `fileChunkSizeBytes`
+(maximum value 4MB) are split into smaller chunks, and each chunk is emitted as a separate record.
+
+### File Processing
+- Processes files of any size through automatic chunking
+- Configurable polling interval for checking updates
+- Retry mechanism for handling temporary failures
+
 ## Destination
 
 The Box Destination takes a Conduit record and uploads it to the remote Box directory.
@@ -66,12 +81,7 @@ You can store the access token in one of the following ways:
 - As an environment variable
 <!-- /readmegen:description -->
 
-## Source
-
-A source connector pulls data from an external resource and pushes it to
-downstream resources via Conduit.
-
-### Configuration
+## Source Configuration Parameters
 
 <!-- readmegen:source.parameters.yaml -->
 ```yaml
@@ -83,15 +93,80 @@ pipelines:
       - id: example
         plugin: "box"
         settings:
+          # Token used to authenticate API access.
+          # Type: string
+          # Required: yes
+          token: ""
+          # Size of a file chunk in bytes to split large files, maximum is 4MB.
+          # Type: int
+          # Required: no
+          fileChunkSizeBytes: "3932160"
+          # ID of the Box directory to read/write files. The default is 0 (the
+          # root directory).
+          # Type: int
+          # Required: no
+          parentID: "0"
+          # This period is used by worker to poll for new data at regular
+          # intervals.
+          # Type: duration
+          # Required: no
+          pollingInterval: "5s"
+          # Maximum number of retry attempts.
+          # Type: int
+          # Required: no
+          retries: "0"
+          # Delay between retry attempts.
+          # Type: duration
+          # Required: no
+          retryDelay: "10s"
+          # Maximum delay before an incomplete batch is read from the source.
+          # Type: duration
+          # Required: no
+          sdk.batch.delay: "0"
+          # Maximum size of batch before it gets read from the source.
+          # Type: int
+          # Required: no
+          sdk.batch.size: "0"
+          # Specifies whether to use a schema context name. If set to false, no
+          # schema context name will be used, and schemas will be saved with the
+          # subject name specified in the connector (not safe because of name
+          # conflicts).
+          # Type: bool
+          # Required: no
+          sdk.schema.context.enabled: "true"
+          # Schema context name to be used. Used as a prefix for all schema
+          # subject names. If empty, defaults to the connector ID.
+          # Type: string
+          # Required: no
+          sdk.schema.context.name: ""
+          # Whether to extract and encode the record key with a schema.
+          # Type: bool
+          # Required: no
+          sdk.schema.extract.key.enabled: "true"
+          # The subject of the key schema. If the record metadata contains the
+          # field "opencdc.collection" it is prepended to the subject name and
+          # separated with a dot.
+          # Type: string
+          # Required: no
+          sdk.schema.extract.key.subject: "key"
+          # Whether to extract and encode the record payload with a schema.
+          # Type: bool
+          # Required: no
+          sdk.schema.extract.payload.enabled: "false"
+          # The subject of the payload schema. If the record metadata contains
+          # the field "opencdc.collection" it is prepended to the subject name
+          # and separated with a dot.
+          # Type: string
+          # Required: no
+          sdk.schema.extract.payload.subject: "payload"
+          # The type of the payload schema.
+          # Type: string
+          # Required: no
+          sdk.schema.extract.type: "avro"
 ```
 <!-- /readmegen:source.parameters.yaml -->
 
-## Destination
-
-A destination connector pushes data from upstream resources to an external
-resource via Conduit.
-
-### Configuration
+## Destination Configuration Parameters
 
 <!-- readmegen:destination.parameters.yaml -->
 ```yaml
@@ -107,9 +182,9 @@ pipelines:
           # Type: string
           # Required: yes
           token: ""
-          # ID of the Box directory to read/write files. Default is 0 for the
-          # root directory.
-          # Type: string
+          # ID of the Box directory to read/write files. The default is 0 (the
+          # root directory).
+          # Type: int
           # Required: no
           parentID: "0"
           # Maximum delay before an incomplete batch is written to the
@@ -172,9 +247,6 @@ Run `make build` to build the connector.
 Run `make test` to run all the unit tests. Run `make test-integration` to run
 the integration tests.
 
-The Docker compose file at `test/docker-compose.yml` can be used to run the
-required resource locally.
-
 ## How to release?
 
 The release is done in two steps:
@@ -186,3 +258,7 @@ The release is done in two steps:
   change.
 - Tag the connector, which will kick off a release. This can be done
   with [tag.sh](/scripts/tag.sh).
+
+## Known Issues & Limitations
+
+- Does not support syncing files which are renamed in source folder

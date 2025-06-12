@@ -17,6 +17,6 @@ package config
 type Config struct {
 	// Token used to authenticate API access.
 	Token string `json:"token" validate:"required"`
-	// ID of the Box directory to read/write files. Default is 0 for the root directory.
-	ParentID string `json:"parentID"  default:"0"`
+	// ID of the Box directory to read/write files. The default is 0 (the root directory).
+	ParentID int `json:"parentID"  default:"0"`
 }

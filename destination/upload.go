@@ -272,16 +272,18 @@ func (d *Destination) getFileIDByFilename(ctx context.Context, filename string) 
 
 	for more {
 		var err error
-		var items []box.Entry
-		items, nextMarker, more, err = d.client.ListFolderItems(ctx, d.config.ParentID, nextMarker, 1000)
+		response, err := d.client.ListFolderItems(ctx, d.config.ParentID, nextMarker, 1000)
 		if err != nil {
 			return "", fmt.Errorf("error listing folder items %w", err)
 		}
-		for _, item := range items {
+
+		for _, item := range response.Entries {
 			if item.Name == filename {
 				return item.ID, nil
 			}
 		}
+
+		more = response.NextMarker != ""
 	}
 
 	return "", ErrFileNotFound
