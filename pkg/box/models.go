@@ -97,6 +97,10 @@ type Entry struct {
 		ID   string `json:"id"`
 		Name string `json:"name"`
 	} `json:"parent"`
+	PathCollection struct {
+		TotalCount int          `json:"total_count"`
+		Entries    []FolderMini `json:"entries"`
+	} `json:"path_collection"`
 	Name       string    `json:"name"`
 	SequenceID string    `json:"sequence_id"`
 	Sha1       string    `json:"sha1"`
@@ -112,4 +116,12 @@ type Event struct {
 	EventID   string    `json:"event_id"`
 	CreatedAt time.Time `json:"created_at"`
 	Source    Entry     `json:"source"`
+}
+
+type FolderMini struct {
+	ID         string `json:"id"`
+	Type       string `json:"type"`
+	Etag       string `json:"etag"`
+	Name       string `json:"name"`
+	SequenceID string `json:"sequence_id"`
 }

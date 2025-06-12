@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -152,7 +153,7 @@ func (w *Worker) processFile(ctx context.Context, entry box.Entry, modFrom, modi
 		return nil
 	}
 
-	// If the entry was created in this time range, we record that as a create operation.
+	// If the entry was **created** in this time range, we record that as a create operation.
 	// Otherwise, it's an update operation.
 	isAnUpdate := entry.CreatedAt.Before(modFrom)
 
@@ -306,8 +307,8 @@ func (w *Worker) createRecord(entry box.Entry, data []byte, existing bool) (open
 		opencdc.MetadataFileName:   entry.Name,
 		"parent":                   entry.Parent.Name,
 		"file_id":                  entry.ID,
-		opencdc.MetadataCollection: entry.Parent.ID,
-		opencdc.MetadataFileSize:   fmt.Sprintf("%d", entry.Size),
+		opencdc.MetadataCollection: w.getCollection(entry),
+		opencdc.MetadataFileSize:   strconv.Itoa(entry.Size),
 		opencdc.MetadataFileHash:   entry.Sha1,
 	}
 
@@ -329,4 +330,19 @@ func (w *Worker) createRecord(entry box.Entry, data []byte, existing bool) (open
 	}
 
 	return record, nil
+}
+
+func (w *Worker) getCollection(entry box.Entry) string {
+	var include bool
+	var collectionElems []string
+	for _, e := range entry.PathCollection.Entries {
+		if e.ID == strconv.Itoa(w.config.ParentID) {
+			include = true
+		}
+		if include {
+			collectionElems = append(collectionElems, e.Name)
+		}
+	}
+
+	return strings.Join(collectionElems, "/")
 }
