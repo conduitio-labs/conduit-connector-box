@@ -33,13 +33,13 @@ const (
 )
 
 type Worker struct {
-	client            box.Box
-	config            Config
-	recordsCh         chan<- opencdc.Record
-	errorCh           chan<- error
-	wg                *sync.WaitGroup
-	currentChunkInfo  *ChunkInfo
-	lastProcessedTime int64
+	client           box.Box
+	config           Config
+	recordsCh        chan<- opencdc.Record
+	errorCh          chan<- error
+	wg               *sync.WaitGroup
+	currentChunkInfo *ChunkInfo
+	lastModifiedAt   time.Time
 }
 
 func NewWorker(
@@ -51,13 +51,13 @@ func NewWorker(
 	wg *sync.WaitGroup,
 ) *Worker {
 	return &Worker{
-		client:            client,
-		config:            config,
-		recordsCh:         recordsCh,
-		errorCh:           errorCh,
-		wg:                wg,
-		currentChunkInfo:  position.ChunkInfo,
-		lastProcessedTime: position.LastProcessedUnixTime,
+		client:           client,
+		config:           config,
+		recordsCh:        recordsCh,
+		errorCh:          errorCh,
+		wg:               wg,
+		currentChunkInfo: position.ChunkInfo,
+		lastModifiedAt:   position.LastModifiedAt,
 	}
 }
 
@@ -69,9 +69,15 @@ func (w *Worker) Start(ctx context.Context) {
 	retries := w.config.Retries
 
 	for {
+		modifiedFrom := w.lastModifiedAt
+		if modifiedFrom.IsZero() {
+			modifiedFrom = time.Time{}
+		}
+		modifiedTo := time.Now()
+
 		waitDuration := w.config.PollingInterval
 
-		err := w.processFolder(ctx, w.config.ParentID)
+		err := w.processFolder(ctx, w.config.ParentID, modifiedFrom, modifiedTo)
 		if err != nil {
 			if retries == 0 {
 				sdk.Logger(ctx).Err(err).Msg("retries exhausted, worker shutting down...")
@@ -82,6 +88,7 @@ func (w *Worker) Start(ctx context.Context) {
 			sdk.Logger(ctx).Warn().Err(err).Msgf("retrying... (%d attempts left)", retries)
 			waitDuration = w.config.RetryDelay
 		} else {
+			w.lastModifiedAt = modifiedTo
 			retries = w.config.Retries // Reset retries on success
 		}
 
@@ -94,7 +101,7 @@ func (w *Worker) Start(ctx context.Context) {
 	}
 }
 
-func (w *Worker) processFolder(ctx context.Context, folderID int) error {
+func (w *Worker) processFolder(ctx context.Context, folderID int, modifiedFrom, modifiedTo time.Time) error {
 	sdk.Logger(ctx).Debug().
 		Int("folder_id", folderID).
 		Msgf("processing folder")
@@ -107,7 +114,7 @@ func (w *Worker) processFolder(ctx context.Context, folderID int) error {
 		}
 
 		for _, item := range response.Entries {
-			if err := w.processItem(ctx, item); err != nil {
+			if err := w.processItem(ctx, item, modifiedFrom, modifiedTo); err != nil {
 				return fmt.Errorf("process file failed: %w", err)
 			}
 		}
@@ -121,36 +128,39 @@ func (w *Worker) processFolder(ctx context.Context, folderID int) error {
 	return nil
 }
 
-func (w *Worker) processItem(ctx context.Context, entry box.Entry) error {
+func (w *Worker) processItem(ctx context.Context, entry box.Entry, modifiedFrom, modifiedTo time.Time) error {
 	switch entry.Type {
 	case typeFolder:
 		folderID, err := strconv.Atoi(entry.ID)
 		if err != nil {
 			return fmt.Errorf("invalid folder id: %w", err)
 		}
-		return w.processFolder(ctx, folderID)
+		return w.processFolder(ctx, folderID, modifiedFrom, modifiedTo)
 	case typeFile:
-		return w.processFile(ctx, entry)
+		return w.processFile(ctx, entry, modifiedFrom, modifiedTo)
 	default:
 		sdk.Logger(ctx).Trace().Msgf("ignoring item type: %v", entry.Type)
 		return nil
 	}
 }
 
-func (w *Worker) processFile(ctx context.Context, entry box.Entry) error {
-	if entry.CreatedAt.UnixNano() > w.lastProcessedTime {
-		if err := w.processFileAnySize(ctx, entry, false); err != nil {
-			return fmt.Errorf("process new file failed: %w", err)
-		}
+func (w *Worker) processFile(ctx context.Context, entry box.Entry, modFrom, modifiedTo time.Time) error {
+	// If the entry was modified before modFrom, the entry was already read.
+	// If the entry was modified after modifiedTo, we skip it because we are
+	// limited to the range [modFrom, modifiedTo).
+	if entry.ModifiedAt.Before(modFrom) || entry.ModifiedAt.After(modifiedTo) || entry.ModifiedAt.Equal(modifiedTo) {
+		return nil
 	}
 
-	if entry.CreatedAt.UnixNano() <= w.lastProcessedTime && entry.ModifiedAt.UnixNano() > w.lastProcessedTime {
-		if err := w.processFileAnySize(ctx, entry, true); err != nil {
-			return fmt.Errorf("process existing file failed: %w", err)
-		}
+	// If the entry was created in this time range, we record that as a create operation.
+	// Otherwise, it's an update operation.
+	isAnUpdate := entry.CreatedAt.Before(modFrom)
+
+	err := w.processFileAnySize(ctx, entry, isAnUpdate)
+	if err != nil {
+		return fmt.Errorf("process file failed: %w", err)
 	}
 
-	// a file that's already been processed
 	return nil
 }
 
@@ -237,7 +247,6 @@ func (w *Worker) createChunkedRecord(entry box.Entry, chunkIdx, totalChunks int,
 
 	if chunkIdx == totalChunks {
 		w.currentChunkInfo = nil
-		w.lastProcessedTime = entry.ModifiedAt.UnixNano()
 	} else {
 		chunkInfo = &ChunkInfo{
 			FileID:      entry.ID,
@@ -248,7 +257,7 @@ func (w *Worker) createChunkedRecord(entry box.Entry, chunkIdx, totalChunks int,
 		w.currentChunkInfo = chunkInfo
 	}
 
-	sdkPosition, err := ToSDKPosition(w.lastProcessedTime, nil)
+	sdkPosition, err := ToSDKPosition(w.lastModifiedAt, nil)
 	if err != nil {
 		return opencdc.Record{}, fmt.Errorf("marshal position: %w", err)
 	}
@@ -287,9 +296,8 @@ func (w *Worker) createChunkedRecord(entry box.Entry, chunkIdx, totalChunks int,
 
 func (w *Worker) createRecord(entry box.Entry, data []byte, existing bool) (opencdc.Record, error) {
 	w.currentChunkInfo = nil
-	w.lastProcessedTime = entry.ModifiedAt.UnixNano()
 
-	position, err := ToSDKPosition(w.lastProcessedTime, nil)
+	position, err := ToSDKPosition(w.lastModifiedAt, nil)
 	if err != nil {
 		return opencdc.Record{}, fmt.Errorf("marshal position: %w", err)
 	}

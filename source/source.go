@@ -110,8 +110,8 @@ func (s *Source) Open(ctx context.Context, position opencdc.Position) error {
 		}
 	}
 
-	s.ch = make(chan opencdc.Record, 5)
-	s.errCh = make(chan error)
+	s.ch = make(chan opencdc.Record, *s.config.BatchSize)
+	s.errCh = make(chan error, 1)
 	s.workersWg = &sync.WaitGroup{}
 
 	// Start worker
@@ -151,7 +151,7 @@ func (s *Source) ReadN(ctx context.Context, n int) ([]opencdc.Record, error) {
 	for len(records) < n {
 		select {
 		case err := <-s.errCh:
-			return records, fmt.Errorf("worker error: %w", err)
+			return nil, fmt.Errorf("worker error: %w", err)
 		case r, ok := <-s.ch:
 			if !ok {
 				break
@@ -177,14 +177,6 @@ func (s *Source) Teardown(ctx context.Context) error {
 	}
 	if s.workersWg != nil {
 		s.workersWg.Wait()
-	}
-	if s.ch != nil {
-		close(s.ch)
-		s.ch = nil
-	}
-	if s.errCh != nil {
-		close(s.errCh)
-		s.errCh = nil
 	}
 	return nil
 }
