@@ -16,20 +16,22 @@ package box
 
 import (
 	"context"
+	"io"
 )
 
 type Box interface {
 	// Download returns the contents of a file in binary format.
+	// This supports an optional Range header to retrieve partial content.
 	// Docs: https://developer.box.com/reference/get-files-id-content
-	Download(ctx context.Context) ([]byte, error)
+	Download(ctx context.Context, fileID string, rangeHeader string) (io.ReadCloser, error)
 
 	// Upload uploads a file to box folder.
 	// Docs: https://developer.box.com/reference/post-files-content
-	Upload(ctx context.Context, filename, parentID, fileID string, content []byte) (*UploadResponse, error)
+	Upload(ctx context.Context, filename string, parentID int, fileID string, content []byte) (*UploadResponse, error)
 
 	// Session starts a multi-chunk upload session for large files.
 	// Docs: https://developer.box.com/reference/post-files-upload-sessions
-	Session(ctx context.Context, filename, parentID, fileID string, filesize int64) (*SessionResponse, error)
+	Session(ctx context.Context, filename string, parentID int, fileID string, filesize int64) (*SessionResponse, error)
 
 	// UploadChunk uploads a chunk to an existing upload session.
 	// Docs: https://developer.box.com/reference/put-files-upload-sessions-id
@@ -45,7 +47,11 @@ type Box interface {
 
 	// ListFolderItems returns the items (files/folders) within a Box folder.
 	// Docs: https://developer.box.com/reference/get-folders-id-items
-	ListFolderItems(ctx context.Context, folderID, marker string, limit int) ([]Entry, string, bool, error)
+	ListFolderItems(ctx context.Context, folderID int, marker string, limit int) (PaginationResponse, error)
+
+	// VerifyFolder checks whether a folder with the given ID exists and is accessible.
+	// Docs: https://developer.box.com/reference/get-folders-id
+	VerifyFolder(ctx context.Context, id int) error
 
 	// Close closes the HTTPClient
 	Close()
